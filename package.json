@@ -1,0 +1,17 @@
+{
+  "name": "absensi-rat-kpni-assets",
+  "private": true,
+  "description": "Build aset front-end (CSS Tailwind, subset ikon Tabler, font lokal) untuk Sistem Absensi RAT KPNI",
+  "scripts": {
+    "build": "npm run build:css && npm run build:assets",
+    "build:css": "tailwindcss -c tailwind.config.js -i resources/css/app.css -o public/assets/css/app.css --minify",
+    "build:assets": "node tools/build-assets.mjs"
+  },
+  "devDependencies": {
+    "@fontsource/jetbrains-mono": "5.2.8",
+    "@fontsource/poppins": "5.2.7",
+    "@tabler/icons-webfont": "3.19.0",
+    "subset-font": "2.4.0",
+    "tailwindcss": "3.4.17"
+  }
+}
