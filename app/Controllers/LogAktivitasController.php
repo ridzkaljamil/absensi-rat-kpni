@@ -46,8 +46,10 @@ class LogAktivitasController extends BaseController
 
     public function bersihkan()
     {
-        $db = \Config\Database::connect();
-        $db->table('tb_log_aktivitas')->truncate();
+        $jumlah = $this->logModel->countAllResults();
+        db_connect()->table('tb_log_aktivitas')->truncate();
+        $this->catatLog("Membersihkan {$jumlah} log aktivitas"); // jejak siapa yang membersihkan
+
         return redirect()->to('/log')->with('success', 'Semua log aktivitas berhasil dibersihkan.');
     }
 }

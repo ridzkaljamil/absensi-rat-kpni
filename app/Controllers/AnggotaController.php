@@ -2,12 +2,11 @@
 
 namespace App\Controllers;
 
+use App\Libraries\ExcelExport;
+use App\Libraries\KartuRfid;
 use App\Models\AnggotaModel;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
-use PhpOffice\PhpSpreadsheet\Style\Fill;
-use PhpOffice\PhpSpreadsheet\Style\Alignment;
 
 class AnggotaController extends BaseController
 {
@@ -72,6 +71,7 @@ class AnggotaController extends BaseController
             'filterRfid'    => $filterRfid,
             'daftarDept'    => array_column($daftarDept, 'departemen'),
             'daftarSect'    => array_column($daftarSect, 'section'),
+            'daftarShift'   => array_column($this->db->table('tb_anggota')->select('shift')->distinct()->where('shift IS NOT NULL')->where('shift !=', '')->orderBy('shift')->get()->getResultArray(), 'shift'),
             'totalAktif'    => $this->anggotaModel->where('status','aktif')->countAllResults(),
             'totalNonaktif' => $this->anggotaModel->where('status','nonaktif')->countAllResults(),
         ]);
@@ -79,14 +79,14 @@ class AnggotaController extends BaseController
 
     public function store()
     {
-        $nip        = trim($this->request->getPost('nip'));
-        $nama       = strtoupper(trim($this->request->getPost('nama')));
+        $nip        = normalisasi_nip((string) $this->request->getPost('nip'));
+        $nama       = strtoupper(trim((string) $this->request->getPost('nama')));
         $departemen = strtoupper(trim($this->request->getPost('departemen') ?? ''));
         $section    = strtoupper(trim($this->request->getPost('section') ?? ''));
         $shift      = strtoupper(trim($this->request->getPost('shift') ?? ''));
 
-        if (! $this->validate([
-            'nip'  => ['rules'=>'required|exact_length[6]|numeric','errors'=>['required'=>'NIP wajib diisi.','exact_length'=>'NIP harus tepat 6 digit.','numeric'=>'NIP harus angka.']],
+        if (! $this->validateData(['nip' => $nip, 'nama' => $nama], [
+            'nip'  => ['rules'=>'required|exact_length[6]|is_natural','errors'=>['required'=>'NIP wajib diisi.','exact_length'=>'NIP harus tepat 6 digit.','is_natural'=>'NIP harus berupa angka.']],
             'nama' => ['rules'=>'required|min_length[3]','errors'=>['required'=>'Nama wajib diisi.','min_length'=>'Nama minimal 3 karakter.']],
         ])) {
             return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
@@ -94,6 +94,11 @@ class AnggotaController extends BaseController
 
         if ($this->anggotaModel->nipSudahAda($nip)) {
             return redirect()->back()->withInput()->with('error', "NIP {$nip} sudah terdaftar.");
+        }
+        $kartu = new KartuRfid();
+        $uid   = normalisasi_uid((string) $this->request->getPost('uid_rfid'));
+        if ($uid !== '' && ($pesan = $kartu->cekBentrok($uid, $nip)) !== null) {
+            return redirect()->back()->withInput()->with('error', $pesan);
         }
 
         $this->anggotaModel->insert([
@@ -105,7 +110,11 @@ class AnggotaController extends BaseController
             'status'     => 'aktif',
         ]);
 
-        $this->catatLog("Menambah anggota baru: {$nama} (NIP: {$nip})");
+        if ($uid !== '') {
+            $kartu->pasang($nip, $uid); // sudah dicek di atas
+        }
+
+        $this->catatLog("Menambah anggota baru: {$nama} (NIP: {$nip})" . ($uid !== '' ? " dengan RFID {$uid}" : ''));
         return redirect()->to('/anggota')->with('success', "Anggota {$nama} berhasil ditambahkan.");
     }
 
@@ -138,18 +147,29 @@ class AnggotaController extends BaseController
         $anggota = $this->anggotaModel->find($id);
         if (! $anggota) return redirect()->to('/anggota')->with('error', 'Data tidak ditemukan.');
 
-        $uid = trim($this->request->getPost('uid_rfid') ?? '');
-        if (! $uid) return redirect()->to('/anggota')->with('error', 'UID kartu tidak boleh kosong.');
-
-        // Cek duplikat, kecuali kalau UID itu milik anggota ini sendiri
-        $existing = $this->anggotaModel->findByUidRfid($uid);
-        if ($existing && (int) $existing['id'] !== $id) {
-            return redirect()->to('/anggota')->with('error', "Kartu ini sudah terdaftar ke anggota lain ({$existing['nama']}).");
+        $uid   = normalisasi_uid((string) $this->request->getPost('uid_rfid'));
+        $pesan = (new KartuRfid())->pasang($anggota['nip'], $uid);
+        if ($pesan !== null) {
+            return redirect()->to('/anggota')->with('error', $pesan);
         }
 
-        $this->anggotaModel->update($id, ['uid_rfid' => $uid]);
         $this->catatLog("Mendaftarkan kartu RFID untuk anggota {$anggota['nama']} ({$anggota['nip']}): {$uid}");
-        return redirect()->to('/anggota')->with('success', "Kartu RFID berhasil dipasangkan ke {$anggota['nama']}.");
+
+        return redirect()->to('/anggota')->with('success', "Kartu RFID berhasil dipasangkan ke {$anggota['nama']} (berlaku di semua sesi dan RAT).");
+    }
+
+    /**
+     * Lepas kartu RFID dari anggota (hilang/rusak/keluar) supaya kartunya bisa dipakai orang lain.
+     */
+    public function lepasRfid(int $id)
+    {
+        $anggota = $this->anggotaModel->find($id);
+        if (! $anggota) return redirect()->to('/anggota')->with('error', 'Data tidak ditemukan.');
+
+        (new KartuRfid())->lepas($anggota['nip']);
+        $this->catatLog("Melepas kartu RFID {$anggota['uid_rfid']} dari {$anggota['nama']} ({$anggota['nip']})");
+
+        return redirect()->to('/anggota')->with('success', "Kartu RFID {$anggota['nama']} sudah dilepas.");
     }
 
     public function hapus(int $id)
@@ -157,13 +177,16 @@ class AnggotaController extends BaseController
         $anggota = $this->anggotaModel->find($id);
         if (! $anggota) return redirect()->to('/anggota')->with('error', 'Data tidak ditemukan.');
 
-        // NULL-kan id_anggota di tb_absensi supaya histori absensi tetap ada
-        // (nama sudah tersimpan di nama_snapshot saat absen dicatat)
-        $this->db->table('tb_absensi')->where('id_anggota', $id)->update(['id_anggota' => null]);
+        // Anggota yang sudah pernah absen cukup dinonaktifkan, supaya riwayat & rekap tetap utuh
+        $pernahAbsen = $this->db->table('tb_absensi')->where('id_anggota', $id)->countAllResults();
+        if ($pernahAbsen > 0) {
+            return redirect()->to('/anggota')->with('error', "{$anggota['nama']} sudah punya {$pernahAbsen} riwayat absensi sehingga tidak bisa dihapus. Gunakan Nonaktifkan.");
+        }
 
         $this->anggotaModel->delete($id);
-        $this->catatLog("Menghapus anggota: {$anggota['nama']} ({$anggota['nip']}) — histori absensi tetap ada via snapshot");
-        return redirect()->to('/anggota')->with('success', "{$anggota['nama']} berhasil dihapus. Histori absensi tetap tersimpan.");
+        $this->catatLog("Menghapus anggota: {$anggota['nama']} ({$anggota['nip']})");
+
+        return redirect()->to('/anggota')->with('success', "{$anggota['nama']} berhasil dihapus.");
     }
 
     public function nonaktifkan(int $id)
@@ -184,127 +207,121 @@ class AnggotaController extends BaseController
         return redirect()->to('/anggota')->with('success', "{$anggota['nama']} telah diaktifkan kembali.");
     }
 
+    /**
+     * Import data induk dari Excel. Kolom dikenali dari judul di baris 1
+     * (NIP, Nama, Departemen, Section, Shift, RFID); kalau tidak ada judul,
+     * dipakai urutan template: A=No, B=NIP, C=Nama, D=Departemen, E=Section, F=Shift, G=RFID.
+     * Semua baris disimpan dalam satu transaksi.
+     */
     public function import()
     {
         $file = $this->request->getFile('file_excel');
         if (! $file || ! $file->isValid()) {
-            return redirect()->back()->with('error', 'File Excel tidak valid.');
+            return redirect()->to('/anggota')->with('error', 'File Excel tidak valid' . ($file ? ': ' . $file->getErrorString() : '.'));
+        }
+        if (! in_array(strtolower($file->getClientExtension()), ['xlsx', 'xls', 'csv'], true)) {
+            return redirect()->to('/anggota')->with('error', 'Format file harus .xlsx / .xls / .csv');
         }
 
         try {
-            $spreadsheet = IOFactory::load($file->getTempName());
-            $rows = $spreadsheet->getActiveSheet()->toArray();
+            $reader = IOFactory::createReaderForFile($file->getTempName());
+            $reader->setReadDataOnly(true);
+            $rows = $reader->load($file->getTempName())->getActiveSheet()->toArray(null, true, false, false);
         } catch (\Throwable $e) {
-            return redirect()->back()->with('error', 'Gagal membaca file: ' . $e->getMessage());
+            return redirect()->to('/anggota')->with('error', 'Gagal membaca file. Pastikan file Excel tidak rusak.');
         }
 
-        array_shift($rows); // skip header
-        $berhasil = 0;
-        $gagal = [];
-        $noBaris = 1;
+        // Kenali kolom dari judul baris pertama
+        $kolom = ['nip' => 1, 'nama' => 2, 'departemen' => 3, 'section' => 4, 'shift' => 5, 'uid' => 6];
+        $judul = array_map(static fn ($v) => strtolower(trim((string) $v)), $rows[0] ?? []);
+        $adaJudul = false;
+        foreach (['nip' => 'nip', 'nama' => 'nama', 'departemen' => 'dep', 'section' => 'section', 'shift' => 'shift', 'uid' => 'rfid'] as $field => $kunci) {
+            foreach ($judul as $i => $j) {
+                if ($j !== '' && str_contains($j, $kunci)) { $kolom[$field] = $i; $adaJudul = true; break; }
+            }
+        }
+        if ($adaJudul) {
+            array_shift($rows); // baris judul (file tanpa judul: baris pertama sudah data)
+            // Kolom yang judulnya tidak ditemukan dikosongkan, jangan ambil posisi template
+            foreach ($kolom as $field => $posisi) {
+                $ketemu = false;
+                foreach ($judul as $i => $j) {
+                    if ($i === $posisi && $j !== '' && str_contains($j, ['nip' => 'nip', 'nama' => 'nama', 'departemen' => 'dep', 'section' => 'section', 'shift' => 'shift', 'uid' => 'rfid'][$field])) { $ketemu = true; break; }
+                }
+                if (! $ketemu) $kolom[$field] = null;
+            }
+        }
 
-        foreach ($rows as $row) {
-            $noBaris++;
-            // Format: A=No, B=NIP, C=Nama, D=Departemen, E=Section, F=Shift, G=RFID
-            $nip        = isset($row[1]) ? trim((string)$row[1]) : '';
-            $nama       = isset($row[2]) ? strtoupper(trim((string)$row[2])) : '';
-            $departemen = isset($row[3]) ? strtoupper(trim((string)$row[3])) : '';
-            $section    = isset($row[4]) ? strtoupper(trim((string)$row[4])) : '';
-            $shift      = isset($row[5]) ? strtoupper(trim((string)$row[5])) : '';
-            $uid        = isset($row[6]) ? trim((string)$row[6]) : '';
-            // Skip baris kosong dan RFID formula
-            if (str_starts_with($uid, '=')) $uid = '';
+        $nipAda = array_flip(array_column($this->db->table('tb_anggota')->select('nip')->get()->getResultArray(), 'nip'));
+        $kartuBaru = []; // [nip => uid] dipasang setelah insert lewat aturan KartuRfid
+
+        $batch = [];
+        $gagal = [];
+        $now   = date('Y-m-d H:i:s');
+        foreach ($rows as $n => $row) {
+            $baris = $n + 2;
+            $ambil = static fn ($f) => $kolom[$f] === null ? '' : trim((string) ($row[$kolom[$f]] ?? ''));
+            $nip   = normalisasi_nip($ambil('nip'));
+            $nama  = strtoupper($ambil('nama'));
+            $uid   = $ambil('uid');
+            $uid   = str_starts_with($uid, '=') ? '' : normalisasi_uid(preg_replace('/\.0+$/', '', $uid));
 
             if ($nip === '' && $nama === '') continue;
-            if ($nip === '' || $nama === '') {
-                $gagal[] = "Baris {$noBaris}: NIP atau Nama kosong."; continue;
-            }
-            if (strlen($nip) !== 6 || !is_numeric($nip)) {
-                $gagal[] = "Baris {$noBaris}: NIP {$nip} tidak valid (harus 6 digit angka)."; continue;
-            }
-            if ($this->anggotaModel->nipSudahAda($nip)) {
-                $gagal[] = "Baris {$noBaris}: NIP {$nip} sudah terdaftar (duplikat)."; continue;
-            }
+            if ($nip === '' || $nama === '') { $gagal[] = "Baris {$baris}: NIP atau Nama kosong."; continue; }
+            if (! ctype_digit($nip) || strlen($nip) !== 6) { $gagal[] = "Baris {$baris}: NIP {$nip} tidak valid (harus 6 digit angka)."; continue; }
+            if (isset($nipAda[$nip])) { $gagal[] = "Baris {$baris}: NIP {$nip} sudah terdaftar."; continue; }
 
-            $insertData = [
-                'nip'        => $nip,
-                'nama'       => $nama,
-                'departemen' => $departemen ?: null,
-                'section'    => $section    ?: null,
-                'shift'      => $shift      ?: null,
-                'status'     => 'aktif',
+            $batch[] = [
+                'nip' => $nip, 'nama' => mb_substr($nama, 0, 100),
+                'departemen' => strtoupper($ambil('departemen')) ?: null,
+                'section'    => strtoupper($ambil('section')) ?: null,
+                'shift'      => strtoupper($ambil('shift')) ?: null,
+                'status'     => 'aktif', 'created_at' => $now, 'updated_at' => $now,
             ];
-            if ($uid !== '' && !$this->anggotaModel->uidRfidSudahAda($uid)) {
-                $insertData['uid_rfid'] = $uid;
+            $nipAda[$nip] = true;
+            if ($uid !== '') $kartuBaru[$nip] = [$uid, $baris];
+        }
+
+        if ($batch !== []) {
+            $this->db->transStart();
+            $this->db->table('tb_anggota')->insertBatch($batch, null, 200);
+            $this->db->transComplete();
+            if (! $this->db->transStatus()) {
+                return redirect()->to('/anggota')->with('error', 'Import gagal, tidak ada data yang disimpan.');
             }
 
-            $this->anggotaModel->insert($insertData);
-            $berhasil++;
+            // Kartu dipasang satu per satu dengan aturan yang sama seperti pendaftaran manual
+            $kartu = new KartuRfid();
+            foreach ($kartuBaru as $nip => [$uid, $baris]) {
+                $pesan = $kartu->pasang($nip, $uid);
+                if ($pesan !== null) {
+                    $gagal[] = "Baris {$baris}: NIP {$nip} disimpan tanpa kartu — {$pesan}";
+                }
+            }
         }
 
-        $this->catatLog("Import Excel anggota: {$berhasil} berhasil, " . count($gagal) . " gagal.");
+        $berhasil = count($batch);
+        $this->catatLog("Import Excel anggota: {$berhasil} berhasil, " . count($gagal) . ' dilewati.');
 
-        if (! empty($gagal)) {
-            return redirect()->to('/anggota')
-                ->with('success', "{$berhasil} anggota berhasil diimpor.")
-                ->with('gagalImport', $gagal);
-        }
+        $redirect = redirect()->to('/anggota')->with('success', "{$berhasil} anggota baru berhasil diimpor.");
 
-        return redirect()->to('/anggota')->with('success', "{$berhasil} anggota baru berhasil diimpor.");
+        return $gagal ? $redirect->with('gagalImport', $gagal) : $redirect;
     }
 
     public function export()
     {
-        $daftarAnggota = $this->anggotaModel->orderBy('status','ASC')->orderBy('nama','ASC')->findAll();
+        $daftar = $this->anggotaModel->orderBy('status', 'ASC')->orderBy('nama', 'ASC')->findAll();
 
         $spreadsheet = new Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
-        $sheet->setTitle('Data Anggota KPNI');
+        $sheet       = $spreadsheet->getActiveSheet()->setTitle('Data Anggota KPNI');
+        ExcelExport::tabel($sheet, ['No.', 'NIP', 'Nama', 'Departemen', 'Section', 'Shift', 'RFID', 'Status'], array_map(
+            static fn ($a, $i) => [$i + 1, $a['nip'], $a['nama'], $a['departemen'], $a['section'], $a['shift'], $a['uid_rfid'], ucfirst($a['status'])],
+            $daftar, array_keys($daftar)
+        ));
 
-        // Header
-        $headers = ['No.', 'NIP', 'Nama', 'Departemen', 'Section', 'Shift', 'RFID', 'Status'];
-        foreach ($headers as $i => $h) {
-            $col = chr(65 + $i);
-            $sheet->setCellValue($col . '1', $h);
-        }
-        $sheet->getStyle('A1:H1')->applyFromArray([
-            'font' => ['bold'=>true,'color'=>['rgb'=>'FFFFFF']],
-            'fill' => ['fillType'=>Fill::FILL_SOLID,'startColor'=>['rgb'=>'0960A8']],
-            'alignment' => ['horizontal'=>Alignment::HORIZONTAL_CENTER],
-        ]);
+        $this->catatLog('Export/backup data anggota (' . count($daftar) . ' anggota)');
 
-        foreach ($daftarAnggota as $i => $a) {
-            $row = $i + 2;
-            $sheet->setCellValue('A'.$row, $i + 1);
-            $sheet->setCellValue('B'.$row, $a['nip']);
-            $sheet->setCellValue('C'.$row, $a['nama']);
-            $sheet->setCellValue('D'.$row, $a['departemen'] ?? '');
-            $sheet->setCellValue('E'.$row, $a['section']    ?? '');
-            $sheet->setCellValue('F'.$row, $a['shift']      ?? '');
-            $sheet->setCellValue('G'.$row, $a['uid_rfid']   ?? '');
-            $sheet->setCellValue('H'.$row, ucfirst($a['status']));
-            if ($i % 2 === 1) {
-                $sheet->getStyle("A{$row}:H{$row}")->getFill()
-                    ->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('F0F7FF');
-            }
-        }
-
-        foreach (['A','B','C','D','E','F','G','H'] as $col) {
-            $sheet->getColumnDimension($col)->setAutoSize(true);
-        }
-
-        $writer = new Xlsx($spreadsheet);
-        ob_start();
-        $writer->save('php://output');
-        $content = ob_get_clean();
-
-        $this->catatLog("Export/backup data anggota (" . count($daftarAnggota) . " anggota)");
-
-        return $this->response
-            ->setHeader('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-            ->setHeader('Content-Disposition','attachment; filename="Data_Anggota_KPNI_' . date('Ymd_His') . '.xlsx"')
-            ->setHeader('Cache-Control','max-age=0')
-            ->setBody($content);
+        return ExcelExport::unduh($spreadsheet, 'Data_Anggota_KPNI_' . date('Ymd_His') . '.xlsx');
     }
 
     public function hapusSemua()
@@ -329,8 +346,6 @@ class AnggotaController extends BaseController
 
     public function bulkRfid()
     {
-        if (session('role') !== 'admin') return redirect()->to('/dashboard');
-
         $anggota = $this->anggotaModel
             ->where('status', 'aktif')
             ->groupStart()
@@ -360,24 +375,16 @@ class AnggotaController extends BaseController
 
     public function bulkRfidSave()
     {
-        $id  = (int) $this->request->getPost('id');
-        $uid = trim($this->request->getPost('uid_rfid'));
-
-        if (!$id || !$uid) {
+        $anggota = $this->anggotaModel->find((int) $this->request->getPost('id'));
+        $uid     = normalisasi_uid((string) $this->request->getPost('uid_rfid'));
+        if (! $anggota || $uid === '') {
             return $this->response->setJSON(['status' => 'error', 'message' => 'Data tidak lengkap.']);
         }
 
-        $anggota = $this->anggotaModel->find($id);
-        if (!$anggota) {
-            return $this->response->setJSON(['status' => 'error', 'message' => 'Anggota tidak ditemukan.']);
+        $pesan = (new KartuRfid())->pasang($anggota['nip'], $uid);
+        if ($pesan !== null) {
+            return $this->response->setJSON(['status' => 'error', 'message' => $pesan]);
         }
-
-        $existing = $this->anggotaModel->where('uid_rfid', $uid)->where('id !=', $id)->first();
-        if ($existing) {
-            return $this->response->setJSON(['status' => 'error', 'message' => 'UID sudah dipakai oleh ' . $existing['nama']]);
-        }
-
-        $this->anggotaModel->update($id, ['uid_rfid' => $uid]);
         $this->catatLog("Bulk RFID: {$anggota['nama']} ({$anggota['nip']}) → {$uid}");
 
         return $this->response->setJSON(['status' => 'success', 'nama' => $anggota['nama'], 'nip' => $anggota['nip']]);

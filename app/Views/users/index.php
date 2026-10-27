@@ -39,8 +39,8 @@
                     <td>
                         <div style="display:flex;gap:6px;justify-content:flex-end;">
                             <?php if ($u['id'] != session()->get('user_id')): ?>
-                            <button class="btn btn-edit btn-sm" onclick="openEditModal(<?= htmlspecialchars(json_encode($u)) ?>)"><i class="ti ti-edit"></i> Edit</button>
-                            <button class="btn btn-danger btn-sm" onclick="showModal({title:'Hapus Akun <?= esc(addslashes($u['username'])) ?>?',message:'Akun ini akan dihapus permanen.',confirmText:'Hapus Akun',type:'danger',onConfirm:()=>document.getElementById('form-hapus-<?= $u['id'] ?>').submit()})"><i class="ti ti-trash"></i></button>
+                            <button class="btn btn-edit btn-sm" onclick="openEditModal(<?= esc(json_encode(['id' => (int) $u['id'], 'username' => $u['username'], 'nama_lengkap' => $u['nama_lengkap'], 'role' => $u['role']]), 'attr') ?>)"><i class="ti ti-edit"></i> Edit</button>
+                            <button class="btn btn-danger btn-sm" onclick="showModal({title:'Hapus Akun <?= esc($u['username'], 'js') ?>?',message:'Akun ini akan dihapus permanen.',confirmText:'Hapus Akun',type:'danger',onConfirm:()=>document.getElementById('form-hapus-<?= $u['id'] ?>').submit()})"><i class="ti ti-trash"></i></button>
                             <form id="form-hapus-<?= $u['id'] ?>" action="/users/<?= $u['id'] ?>/hapus" method="post" style="display:none;"><?= csrf_field() ?></form>
                             <?php else: ?>
                             <a href="/ganti-password" class="btn btn-ghost btn-sm"><i class="ti ti-key"></i> Ganti Password</a>
@@ -69,7 +69,7 @@
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
                 <div><label class="form-label">Role</label><select name="role" class="input-field" required><option value="user">User (operator absensi)</option><option value="admin">Admin (akses penuh)</option></select></div>
-                <div><label class="form-label">Password</label><div style="position:relative;"><input type="password" name="password" id="pwd-baru" class="input-field" style="padding-right:40px;" minlength="6" required><button type="button" class="eye-btn" onmousedown="showPwd('pwd-baru',true)" onmouseup="showPwd('pwd-baru',false)" onmouseleave="showPwd('pwd-baru',false)">👁️</button></div></div>
+                <div><label class="form-label">Password</label><div style="position:relative;"><input type="password" name="password" id="pwd-baru" class="input-field" style="padding-right:40px;" minlength="6" required><button type="button" class="lihat-pwd" data-target="pwd-baru" aria-label="Tampilkan password" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);width:34px;height:34px;border:none;background:none;cursor:pointer;color:#6b7280;font-size:17px;display:flex;align-items:center;justify-content:center;"><i class="ti ti-eye"></i></button></div></div>
             </div>
             <div style="display:flex;gap:10px;justify-content:flex-end;">
                 <button type="button" onclick="closeAllModals()" class="btn btn-ghost">Batal</button>
@@ -94,7 +94,7 @@
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
                 <div><label class="form-label">Role</label><select name="role" id="edit-role" class="input-field"><option value="user">User (operator absensi)</option><option value="admin">Admin (akses penuh)</option></select></div>
-                <div><label class="form-label">Password Baru <span style="font-size:11px;color:#9ca3af;">(kosongkan jika tidak diganti)</span></label><div style="position:relative;"><input type="password" name="password" id="pwd-edit" class="input-field" style="padding-right:40px;" minlength="6" placeholder="Opsional"><button type="button" class="eye-btn" onmousedown="showPwd('pwd-edit',true)" onmouseup="showPwd('pwd-edit',false)" onmouseleave="showPwd('pwd-edit',false)">👁️</button></div></div>
+                <div><label class="form-label">Password Baru <span style="font-size:11px;color:#9ca3af;">(kosongkan jika tidak diganti)</span></label><div style="position:relative;"><input type="password" name="password" id="pwd-edit" class="input-field" style="padding-right:40px;" minlength="6" placeholder="Opsional"><button type="button" class="lihat-pwd" data-target="pwd-edit" aria-label="Tampilkan password" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);width:34px;height:34px;border:none;background:none;cursor:pointer;color:#6b7280;font-size:17px;display:flex;align-items:center;justify-content:center;"><i class="ti ti-eye"></i></button></div></div>
             </div>
             <div style="display:flex;gap:10px;justify-content:flex-end;">
                 <button type="button" onclick="closeAllModals()" class="btn btn-ghost">Batal</button>
@@ -104,18 +104,6 @@
     </div>
 </div>
 
-<script>
-function openModal(id) { document.getElementById(id).style.display = 'flex'; }
-function closeAllModals() { ['modal-tambah','modal-edit'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; }); }
-function openEditModal(u) {
-    document.getElementById('edit-nama').value = u.nama_lengkap;
-    document.getElementById('edit-username').value = u.username;
-    document.getElementById('edit-role').value = u.role;
-    document.getElementById('pwd-edit').value = '';
-    document.getElementById('form-edit-user').action = '/users/' + u.id;
-    openModal('modal-edit');
-}
-document.addEventListener('keydown', e => { if (e.key==='Escape') closeAllModals(); });
-</script>
+<script src="<?= aset('js/users.js') ?>"></script>
 
 <?= $this->endSection() ?>

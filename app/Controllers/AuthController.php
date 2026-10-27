@@ -44,15 +44,28 @@ class AuthController extends BaseController
             return redirect()->back()->withInput()->with('error', 'Username dan password wajib diisi.');
         }
 
-        $username = $this->request->getPost('username');
-        $password = $this->request->getPost('password');
-        $user     = $this->userModel->findByUsername($username);
+        $username = trim((string) $this->request->getPost('username'));
+        $password = (string) $this->request->getPost('password');
+
+        // Batasi tebak password: setelah 5 kali salah, perangkat+username ini dikunci 1 menit
+        $kunci = 'login_gagal_' . md5($this->request->getIPAddress() . '|' . strtolower($username));
+        $gagal = cache($kunci) ?: ['n' => 0, 'sampai' => 0];
+        if ($gagal['n'] >= 5 && $gagal['sampai'] > time()) {
+            $pesan = 'Terlalu banyak percobaan login. Coba lagi dalam ' . ($gagal['sampai'] - time()) . ' detik.';
+            if ($isAjax) return $this->response->setJSON(['ok' => false, 'msg' => $pesan]);
+            return redirect()->back()->withInput()->with('error', $pesan);
+        }
+
+        $user = $this->userModel->findByUsername($username);
 
         if (! $user || ! password_verify($password, $user['password'])) {
+            $gagal = ['n' => ($gagal['sampai'] > time() ? $gagal['n'] : 0) + 1, 'sampai' => time() + MINUTE];
+            cache()->save($kunci, $gagal, MINUTE);
             if ($isAjax) return $this->response->setJSON(['ok'=>false,'msg'=>'Username atau password salah.']);
             return redirect()->back()->withInput()->with('error', 'Username atau password salah.');
         }
 
+        cache()->delete($kunci);
         session()->regenerate(true); // cegah session fixation
         session()->set([
             'isLoggedIn'   => true,
@@ -60,6 +73,7 @@ class AuthController extends BaseController
             'username'     => $user['username'],
             'role'         => $user['role'],
             'nama_lengkap' => $user['nama_lengkap'],
+            'tanda_sandi'  => substr(hash('sha256', $user['password']), 0, 16), // berubah kalau password diganti
         ]);
 
         $this->catatLog('Login ke sistem', (int) $user['id']);
@@ -75,7 +89,10 @@ class AuthController extends BaseController
     {
         // Catat log logout sebelum session dihancurkan (F-08)
         $this->catatLog('Logout dari sistem');
-        session()->destroy();
+        // Kosongkan data login lalu ganti ID session (pesan "telah logout" tetap bisa tampil)
+        session()->remove(['isLoggedIn', 'user_id', 'username', 'role', 'nama_lengkap', 'tanda_sandi', 'rat_dipilih', 'rat_dipilih_label', 'absen_saya']);
+        session()->regenerate(true);
+
         return redirect()->to('/login')->with('success', 'Anda telah logout.');
     }
 
@@ -130,6 +147,8 @@ class AuthController extends BaseController
         }
 
         $this->userModel->updatePassword($userId, $this->request->getPost('new_password'));
+        // Perangkat lain yang login dengan password lama otomatis keluar; perangkat ini tetap masuk
+        session()->set('tanda_sandi', substr(hash('sha256', $this->userModel->find($userId)['password']), 0, 16));
         $this->catatLog('Mengganti password akun sendiri');
 
         return redirect()->to('/dashboard')->with('success', 'Password berhasil diubah.');

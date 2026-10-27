@@ -15,7 +15,7 @@ class PesertaRatModel extends Model
     protected $primaryKey    = 'id';
     protected $returnType    = 'array';
     protected $allowedFields = [
-        'id_rat', 'id_sesi', 'nip', 'nama', 'departemen', 'section', 'shift', 'uid_rfid', 'created_at',
+        'id_rat', 'id_sesi', 'nip', 'nama', 'departemen', 'section', 'shift', 'created_at',
     ];
     protected $useTimestamps = false;
 
@@ -23,9 +23,29 @@ class PesertaRatModel extends Model
     //  Query
     // ─────────────────────────────────────────────
 
+    /**
+     * Peserta satu sesi + kartu RFID-nya (dari data induk).
+     */
     public function getBySesi(int $idSesi): array
     {
-        return $this->where('id_sesi', $idSesi)->orderBy('nama', 'ASC')->findAll();
+        return $this->db->query(
+            'SELECT p.*, a.uid_rfid FROM tb_peserta_rat p
+             LEFT JOIN tb_anggota a ON a.nip = p.nip
+             WHERE p.id_sesi = ? ORDER BY p.nama ASC',
+            [$idSesi]
+        )->getResultArray();
+    }
+
+    /**
+     * Jumlah peserta satu sesi yang sudah punya kartu RFID.
+     */
+    public function jumlahBerkartu(int $idSesi): int
+    {
+        return (int) ($this->db->query(
+            'SELECT COUNT(*) n FROM tb_peserta_rat p JOIN tb_anggota a ON a.nip = p.nip
+             WHERE p.id_sesi = ? AND a.uid_rfid IS NOT NULL AND a.uid_rfid <> ""',
+            [$idSesi]
+        )->getRowArray()['n'] ?? 0);
     }
 
     /**
@@ -35,8 +55,9 @@ class PesertaRatModel extends Model
     public function getUnikByRat(int $idRat): array
     {
         return $this->db->query(
-            'SELECT p.* FROM tb_peserta_rat p
+            'SELECT p.*, a.uid_rfid FROM tb_peserta_rat p
              JOIN (SELECT MIN(id) AS id FROM tb_peserta_rat WHERE id_rat = ? GROUP BY nip) u ON u.id = p.id
+             LEFT JOIN tb_anggota a ON a.nip = p.nip
              ORDER BY p.nama ASC',
             [$idRat]
         )->getResultArray();
@@ -47,33 +68,8 @@ class PesertaRatModel extends Model
         return $this->where('id_sesi', $idSesi)->where('nip', $nip)->first();
     }
 
-    /**
-     * Cari peserta (sesi mana pun di RAT ini) pemilik kartu RFID.
-     * Kartu cukup didaftarkan sekali, berlaku untuk semua sesi.
-     */
-    public function cariByRfidDiRat(int $idRat, string $uid): ?array
-    {
-        return $this->where('id_rat', $idRat)->where('uid_rfid', $uid)->first();
-    }
 
-    /**
-     * Cek apakah UID sudah dipakai orang LAIN (NIP berbeda) di RAT ini.
-     */
-    public function rfidDipakaiOrangLain(int $idRat, string $uid, string $nip): ?array
-    {
-        return $this->where('id_rat', $idRat)
-            ->where('uid_rfid', $uid)
-            ->where('nip !=', $nip)
-            ->first();
-    }
 
-    /**
-     * Pasang UID ke seluruh baris NIP ini di semua sesi RAT.
-     */
-    public function setRfidNip(int $idRat, string $nip, string $uid): void
-    {
-        $this->builder()->where('id_rat', $idRat)->where('nip', $nip)->update(['uid_rfid' => $uid]);
-    }
 
     public function totalPesertaSesi(int $idSesi): int
     {
@@ -112,63 +108,52 @@ class PesertaRatModel extends Model
 
     /**
      * Import dari array hasil baca Excel ke satu sesi.
-     * Data lama di-preload sekali supaya tidak query per baris.
+     * Data lama di-preload sekali; NIP yang muncul dua kali di file cukup diambil baris terakhirnya.
+     * Kartu RFID TIDAK ditulis di sini — dipasang lewat App\Libraries\KartuRfid supaya dicek bentrok.
      */
     public function importBulkSesi(int $idRat, int $idSesi, array $rows): array
     {
-        $inserted = 0;
-        $updated  = 0;
-        $skipped  = 0;
         $now      = date('Y-m-d H:i:s');
+        $existing = array_column($this->select('id, nip')->where('id_sesi', $idSesi)->findAll(), 'id', 'nip');
 
-        $existing = [];
-        foreach ($this->select('id, nip, uid_rfid')->where('id_sesi', $idSesi)->findAll() as $e) {
-            $existing[$e['nip']] = $e;
-        }
-
-        $batchInsert = [];
+        $baru = [];
+        $ubah = [];
+        $skipped = 0;
         foreach ($rows as $row) {
-            $nip = trim((string) ($row['nip'] ?? ''));
-            if ($nip === '') {
+            $nip  = (string) ($row['nip'] ?? '');
+            $nama = trim((string) ($row['nama'] ?? ''));
+            if ($nip === '' || $nama === '') {
                 $skipped++;
                 continue;
             }
 
             $data = [
-                'id_rat'     => $idRat,
-                'id_sesi'    => $idSesi,
-                'nip'        => $nip,
-                'nama'       => trim((string) ($row['nama'] ?? '')),
+                'nama'       => mb_substr($nama, 0, 100),
                 'departemen' => trim((string) ($row['departemen'] ?? '')) ?: null,
                 'section'    => trim((string) ($row['section'] ?? '')) ?: null,
                 'shift'      => trim((string) ($row['shift'] ?? '')) ?: null,
-                'uid_rfid'   => trim((string) ($row['uid_rfid'] ?? '')) ?: null,
-                'created_at' => $now,
             ];
 
             if (isset($existing[$nip])) {
-                if (empty($data['uid_rfid']) && ! empty($existing[$nip]['uid_rfid'])) {
-                    $data['uid_rfid'] = $existing[$nip]['uid_rfid'];
-                }
-                $this->update($existing[$nip]['id'], $data);
-                $updated++;
+                $ubah[$existing[$nip]] = $data + ['id' => $existing[$nip]];
             } else {
-                $batchInsert[$nip] = $data; // key NIP: baris duplikat di file cukup sekali
-                $existing[$nip]    = ['id' => 0, 'nip' => $nip, 'uid_rfid' => $data['uid_rfid']];
-                $inserted++;
+                $baru[$nip] = $data + ['id_rat' => $idRat, 'id_sesi' => $idSesi, 'nip' => $nip, 'created_at' => $now];
             }
         }
 
-        if ($batchInsert !== []) {
-            $this->insertBatch(array_values($batchInsert), null, 200);
+        if ($baru !== []) {
+            $this->insertBatch(array_values($baru), null, 200);
+        }
+        if ($ubah !== []) {
+            $this->updateBatch(array_values($ubah), 'id', 200);
         }
 
-        return ['inserted' => $inserted, 'updated' => $updated, 'skipped' => $skipped];
+        return ['inserted' => count($baru), 'updated' => count($ubah), 'skipped' => $skipped];
     }
 
     /**
      * Salin peserta dari KEHADIRAN sesi sebelumnya ke sesi tujuan.
-     * Yang disalin hanya NIP yang benar-benar absen di sesi sumber.
+     * Yang disalin hanya peserta sesi sumber yang benar-benar hadir (sama dengan angka kuorum).
      */
     public function salinDariKehadiran(int $idRat, int $idSesiTujuan, int $idSesiSumber): array
     {
@@ -176,13 +161,12 @@ class PesertaRatModel extends Model
             'SELECT ab.nip_snapshot AS nip, ab.nama_snapshot AS nama,
                     COALESCE(NULLIF(p.departemen, ""), a.departemen) AS departemen,
                     COALESCE(NULLIF(p.section, ""), a.section)       AS section,
-                    COALESCE(NULLIF(p.shift, ""), a.shift)           AS shift,
-                    COALESCE(NULLIF(p.uid_rfid, ""), a.uid_rfid)     AS uid_rfid
+                    COALESCE(NULLIF(p.shift, ""), a.shift)           AS shift
              FROM tb_absensi ab
-             LEFT JOIN tb_peserta_rat p ON p.nip = ab.nip_snapshot AND p.id_sesi = ?
-             LEFT JOIN tb_anggota a     ON a.nip = ab.nip_snapshot
-             WHERE ab.id_sesi = ? AND ab.nip_snapshot IS NOT NULL AND ab.nip_snapshot <> ""',
-            [$idSesiSumber, $idSesiSumber]
+             JOIN tb_peserta_rat p  ON p.nip = ab.nip_snapshot AND p.id_sesi = ab.id_sesi
+             LEFT JOIN tb_anggota a ON a.nip = ab.nip_snapshot
+             WHERE ab.id_sesi = ?',
+            [$idSesiSumber]
         )->getResultArray();
 
         $sudahAda = array_flip(array_column(
@@ -207,7 +191,6 @@ class PesertaRatModel extends Model
                 'departemen' => $h['departemen'] ?: null,
                 'section'    => $h['section'] ?: null,
                 'shift'      => $h['shift'] ?: null,
-                'uid_rfid'   => $h['uid_rfid'] ?: null,
                 'created_at' => $now,
             ];
         }

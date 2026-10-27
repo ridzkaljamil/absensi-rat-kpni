@@ -21,15 +21,20 @@
         .info-box .label { font-size: 9pt; color: #555; text-transform: uppercase; letter-spacing: 0.05em; }
         .info-box .value { font-size: 13pt; font-weight: bold; }
         table { width: 100%; border-collapse: collapse; font-size: 10pt; margin-bottom: 16px; }
-        th { background: #022760; color: white; padding: 7px 10px; text-align: left; font-size: 9pt; text-transform: uppercase; letter-spacing: 0.05em; }
+        th { background: #022760; color: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; padding: 7px 10px; text-align: left; font-size: 9pt; text-transform: uppercase; letter-spacing: 0.05em; }
         td { padding: 6px 10px; border-bottom: 1px solid #ddd; }
         tr:nth-child(even) td { background: #f5f8ff; }
         .sesi-title { font-size: 12pt; font-weight: bold; color: #022760; border-left: 4px solid #0960A8; padding-left: 10px; margin: 20px 0 10px; }
         .footer { border-top: 2px solid #000; padding-top: 12px; display: flex; justify-content: space-between; font-size: 10pt; }
         .ttd-box { text-align: center; }
         .ttd-box .ttd-line { border-bottom: 1px solid #000; width: 180px; height: 60px; margin: 0 auto 4px; }
+        thead { display: table-header-group; } /* judul kolom diulang di setiap halaman */
+        tr { page-break-inside: avoid; }
+        .sesi-title { page-break-after: avoid; }
+        .footer { page-break-inside: avoid; }
         @media print {
             @page { size: A4; margin: 1.5cm; }
+            th { border: 1px solid #022760; }
             .no-print { display: none !important; }
             body { font-size: 11pt; }
         }
@@ -52,7 +57,7 @@
         <h1><?= strtoupper(esc($rat['nama_rat'])) ?></h1>
         <p>Koperasi Konsumen Pekerja PT NOK Indonesia (KPNI)</p>
         <?php if ($rat['tanggal']): ?>
-            <p><?= esc(date('d F Y', strtotime($rat['tanggal']))) ?></p>
+            <p><?= esc(tanggal_indo($rat['tanggal'])) ?></p>
         <?php endif; ?>
         <?php if ($rat['lokasi']): ?>
             <p><?= esc($rat['lokasi']) ?></p>

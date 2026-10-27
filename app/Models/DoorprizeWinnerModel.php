@@ -9,7 +9,7 @@ class DoorprizeWinnerModel extends Model
     protected $table         = 'tb_doorprize_winners';
     protected $primaryKey    = 'id';
     protected $returnType    = 'array';
-    protected $allowedFields = ['id_rat', 'id_item', 'nip', 'nama', 'departemen', 'section', 'waktu_undi'];
+    protected $allowedFields = ['id_rat', 'id_item', 'nip', 'nama', 'departemen', 'section', 'waktu_undi', 'hangus'];
     protected $useTimestamps = false;
 
     /**
@@ -24,7 +24,7 @@ class DoorprizeWinnerModel extends Model
                    COALESCE(NULLIF(w.departemen, ""), p.departemen, a.departemen, "-") AS dept_live,
                    COALESCE(NULLIF(w.section, ""),    p.section,    a.section,    "-") AS section_live
             FROM tb_doorprize_winners w
-            JOIN tb_doorprize_items i ON i.id = w.id_item
+            LEFT JOIN tb_doorprize_items i ON i.id = w.id_item
             LEFT JOIN (
                 SELECT nip, MAX(NULLIF(departemen, "")) AS departemen, MAX(NULLIF(section, "")) AS section
                 FROM tb_peserta_rat WHERE id_rat = ? GROUP BY nip
@@ -36,12 +36,24 @@ class DoorprizeWinnerModel extends Model
     }
 
     /**
-     * Daftar NIP yang sudah menang di RAT ini, sebagai set [nip => true].
+     * Status undian per NIP di RAT ini: [nip => 'menang'|'hangus'].
+     * Keduanya sama-sama tidak ikut undian lagi.
      */
-    public function nipPemenang(int $idRat): array
+    public function statusPerNip(int $idRat): array
     {
-        $rows = $this->select('nip')->where('id_rat', $idRat)->findAll();
+        $hasil = [];
+        foreach ($this->select('nip, hangus')->where('id_rat', $idRat)->findAll() as $r) {
+            $hasil[$r['nip']] = $r['hangus'] ? 'hangus' : 'menang';
+        }
 
-        return array_fill_keys(array_column($rows, 'nip'), true);
+        return $hasil;
+    }
+
+    /**
+     * Unit barang yang sudah terpakai (pemenang yang hangus tidak dihitung, unitnya diundi ulang).
+     */
+    public function jumlahUnitTerpakai(int $idItem): int
+    {
+        return $this->where('id_item', $idItem)->where('hangus', 0)->countAllResults();
     }
 }

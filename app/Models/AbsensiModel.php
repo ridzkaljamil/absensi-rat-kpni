@@ -12,22 +12,48 @@ class AbsensiModel extends Model
     protected $allowedFields = ['id_sesi', 'id_anggota', 'nama_snapshot', 'nip_snapshot', 'waktu_absen', 'metode', 'foto_path'];
     protected $useTimestamps = false;
 
-    public function sudahAbsenDiSesi(int $idSesi, int $idAnggota): bool
+    /**
+     * Absensi satu NIP di satu sesi (null kalau belum absen).
+     */
+    public function getByNipSesi(int $idSesi, string $nip): ?array
     {
-        return $this->where('id_sesi', $idSesi)
-            ->where('id_anggota', $idAnggota)
-            ->countAllResults() > 0;
-    }
-
-    public function countBySesi(int $idSesi): int
-    {
-        return $this->where('id_sesi', $idSesi)->countAllResults();
+        return $this->where('id_sesi', $idSesi)->where('nip_snapshot', $nip)->first();
     }
 
     /**
-     * Jumlah hadir per sesi dalam satu query: [id_sesi => jumlah].
+     * Jumlah HADIR SAH satu sesi: hanya yang masih terdaftar sebagai peserta sesi itu.
+     * (Kalau peserta dihapus dari daftar, kehadirannya tidak ikut dihitung kuorum,
+     * tapi datanya tetap ada dan terhitung lagi bila orangnya didaftarkan ulang.)
+     */
+    public function countBySesi(int $idSesi): int
+    {
+        return (int) ($this->hitungPerSesi([$idSesi])[$idSesi] ?? 0);
+    }
+
+    /**
+     * Jumlah hadir sah per sesi dalam satu query: [id_sesi => jumlah].
      */
     public function hitungPerSesi(array $idSesiList): array
+    {
+        if ($idSesiList === []) {
+            return [];
+        }
+
+        $rows = $this->db->table('tb_absensi ab')
+            ->select('ab.id_sesi, COUNT(*) AS n')
+            ->join('tb_peserta_rat p', 'p.id_sesi = ab.id_sesi AND p.nip = ab.nip_snapshot')
+            ->whereIn('ab.id_sesi', $idSesiList)
+            ->groupBy('ab.id_sesi')
+            ->get()->getResultArray();
+
+        return array_map('intval', array_column($rows, 'n', 'id_sesi'));
+    }
+
+    /**
+     * Semua baris absensi per sesi, termasuk yang pesertanya sudah dihapus
+     * (dipakai untuk pengaman sebelum menghapus sesi).
+     */
+    public function hitungTercatatPerSesi(array $idSesiList): array
     {
         if ($idSesiList === []) {
             return [];
@@ -43,7 +69,7 @@ class AbsensiModel extends Model
     }
 
     /**
-     * Detail absensi satu sesi untuk rekap Excel/cetak.
+     * Detail kehadiran sah satu sesi untuk rekap Excel/cetak (sama dengan angka kuorum).
      * Pakai snapshot supaya rekap tetap akurat walau anggota dihapus.
      */
     public function getDetailBySesi(int $idSesi): array
@@ -56,8 +82,8 @@ class AbsensiModel extends Model
                     COALESCE(NULLIF(p.section, ""), a.section)       AS section,
                     COALESCE(NULLIF(p.shift, ""), a.shift)           AS shift
              FROM tb_absensi ab
-             LEFT JOIN tb_anggota a     ON a.id = ab.id_anggota
-             LEFT JOIN tb_peserta_rat p ON p.nip = ab.nip_snapshot AND p.id_sesi = ab.id_sesi
+             JOIN tb_peserta_rat p  ON p.nip = ab.nip_snapshot AND p.id_sesi = ab.id_sesi
+             LEFT JOIN tb_anggota a ON a.id = ab.id_anggota
              WHERE ab.id_sesi = ?
              ORDER BY ab.waktu_absen ASC',
             [$idSesi]
@@ -69,7 +95,8 @@ class AbsensiModel extends Model
      *
      * - Daftar peserta diambil UNIK per NIP dari tb_peserta_rat
      *   (satu NIP bisa terdaftar di beberapa sesi).
-     * - Eligible doorprize = hadir di SELURUH sesi RAT tersebut.
+     * - Eligible doorprize = hadir di SEMUA sesi pada $idSesiList
+     *   (DoorprizeController mengirim sesi yang punya daftar peserta).
      *   Tidak hadir di satu sesi saja → tidak eligible.
      */
     public function getSummaryPerAnggota(array $idSesiList, int $idRat): array
@@ -83,8 +110,8 @@ class AbsensiModel extends Model
         // Index kehadiran: [nip][id_sesi] = true (satu query)
         $hadirIdx = [];
         $rows = $this->db->table('tb_absensi ab')
-            ->select('ab.id_sesi, COALESCE(a.nip, ab.nip_snapshot) AS nip')
-            ->join('tb_anggota a', 'a.id = ab.id_anggota', 'left')
+            ->select('ab.id_sesi, ab.nip_snapshot AS nip')
+            ->join('tb_peserta_rat p', 'p.id_sesi = ab.id_sesi AND p.nip = ab.nip_snapshot') // hanya kehadiran sah
             ->whereIn('ab.id_sesi', $idSesiList)
             ->get()->getResultArray();
         foreach ($rows as $r) {

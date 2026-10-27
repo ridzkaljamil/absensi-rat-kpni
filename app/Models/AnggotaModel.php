@@ -17,14 +17,14 @@ class AnggotaModel extends Model
     protected $updatedField  = 'updated_at';
 
     protected $validationRules = [
-        'nip' => 'required|exact_length[6]|numeric',
-        'nama'      => 'required|min_length[3]|max_length[100]',
+        'nip' => 'required|exact_length[6]|is_natural',
+        'nama'      => 'required|min_length[2]|max_length[100]',
     ];
 
     protected $validationMessages = [
         'nip' => [
             'exact_length' => 'PR Number harus 6 digit angka.',
-            'numeric'      => 'PR Number harus berupa angka.',
+            'is_natural'   => 'PR Number harus berupa angka.',
         ],
     ];
 

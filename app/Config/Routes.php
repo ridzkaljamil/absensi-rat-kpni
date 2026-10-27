@@ -14,7 +14,7 @@ $routes->get('/', static function () {
 // ── Auth ──────────────────────────────────────────────────────
 $routes->get('/login',           'AuthController::loginPage');
 $routes->post('/login',          'AuthController::doLogin');
-$routes->get('/logout',          'AuthController::logout');
+$routes->post('/logout',         'AuthController::logout', ['filter' => 'auth']);
 $routes->get('/ganti-password',  'AuthController::changePasswordPage',  ['filter' => 'auth']);
 $routes->post('/ganti-password', 'AuthController::doChangePassword',    ['filter' => 'auth']);
 
@@ -25,8 +25,9 @@ $routes->get('/dashboard/polling', 'DashboardController::polling', ['filter' => 
 // ── RAT ───────────────────────────────────────────────────────
 $routes->get('/rat',                      'RatController::index',      ['filter' => 'auth:admin']);
 $routes->post('/rat',                     'RatController::store',      ['filter' => 'auth:admin']);
-$routes->get('/rat/pilih/(:num)',          'RatController::pilih/$1',   ['filter' => 'auth:admin']);
+$routes->post('/rat/pilih/(:num)',          'RatController::pilih/$1',   ['filter' => 'auth:admin']);
 $routes->post('/rat/(:num)/selesaikan',   'RatController::selesaikan/$1', ['filter' => 'auth:admin']);
+$routes->post('/rat/(:num)/aktifkan',     'RatController::aktifkan/$1',   ['filter' => 'auth:admin']);
 $routes->post('/rat/(:num)/hapus',        'RatController::hapus/$1',   ['filter' => 'auth:admin']);
 
 // ── Anggota ───────────────────────────────────────────────────
@@ -37,6 +38,7 @@ $routes->get('/anggota/export',               'AnggotaController::export',      
 $routes->post('/anggota/hapus-semua',         'AnggotaController::hapusSemua',      ['filter' => 'auth:admin']);
 $routes->post('/anggota/(:num)',              'AnggotaController::update/$1',       ['filter' => 'auth:admin']);
 $routes->post('/anggota/(:num)/rfid',         'AnggotaController::updateRfid/$1',   ['filter' => 'auth:admin']);
+$routes->post('/anggota/(:num)/rfid/lepas',   'AnggotaController::lepasRfid/$1',    ['filter' => 'auth:admin']);
 $routes->post('/anggota/(:num)/hapus',        'AnggotaController::hapus/$1',        ['filter' => 'auth:admin']);
 $routes->post('/anggota/(:num)/nonaktifkan',  'AnggotaController::nonaktifkan/$1',  ['filter' => 'auth:admin']);
 $routes->post('/anggota/(:num)/aktifkan',     'AnggotaController::aktifkanKembali/$1', ['filter' => 'auth:admin']);
@@ -91,6 +93,7 @@ $routes->post('/doorprize/item/(:num)/update','DoorprizeController::updateItem/$
 $routes->post('/doorprize/item/(:num)/hapus','DoorprizeController::hapusItem/$1', ['filter' => 'auth:admin']);
 $routes->post('/doorprize/pick',             'DoorprizeController::pick',          ['filter' => 'auth:admin']);
 $routes->post('/doorprize/winner/(:num)/hapus','DoorprizeController::hapusWinner/$1',['filter' => 'auth:admin']);
+$routes->post('/doorprize/winner/(:num)/hangus','DoorprizeController::hangusWinner/$1',['filter' => 'auth:admin']);
 $routes->get('/doorprize/export-winners',    'DoorprizeController::exportWinners', ['filter' => 'auth:admin']);
 
 // ── Log Aktivitas ─────────────────────────────────────────────

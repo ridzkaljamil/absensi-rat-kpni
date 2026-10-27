@@ -45,7 +45,7 @@
                 <input type="text" name="cari" value="<?= esc($keyword ?? '') ?>" placeholder="Cari NIP/nama..." class="input-field" style="flex:2;min-width:0;height:36px;font-size:12px;">
                 <select name="departemen" class="input-field" style="flex:1.5;min-width:0;height:36px;font-size:12px;"><option value="">Semua Dept</option><?php foreach ($daftarDept as $d): ?><option value="<?= esc($d) ?>" <?= ($filterDept??'')===$d?'selected':'' ?>><?= esc($d) ?></option><?php endforeach; ?></select>
                 <select name="section" class="input-field" style="flex:1.5;min-width:0;height:36px;font-size:12px;"><option value="">Semua Section</option><?php foreach ($daftarSect as $s): ?><option value="<?= esc($s) ?>" <?= ($filterSect??'')===$s?'selected':'' ?>><?= esc($s) ?></option><?php endforeach; ?></select>
-                <select name="shift" class="input-field" style="flex:0.8;min-width:0;height:36px;font-size:12px;"><option value="">Shift</option><option value="A" <?= ($filterShift??'')==='A'?'selected':'' ?>>A</option><option value="B" <?= ($filterShift??'')==='B'?'selected':'' ?>>B</option><option value="N" <?= ($filterShift??'')==='N'?'selected':'' ?>>N</option></select>
+                <select name="shift" class="input-field" style="flex:0.8;min-width:0;height:36px;font-size:12px;"><option value="">Shift</option><?php foreach ($daftarShift as $sh): ?><option value="<?= esc($sh) ?>" <?= ($filterShift??'')===$sh?'selected':'' ?>><?= esc($sh) ?></option><?php endforeach; ?></select>
                 <select name="rfid" class="input-field" style="flex:1;min-width:0;height:36px;font-size:12px;"><option value="">RFID</option><option value="ada" <?= ($filterRfid??'')==='ada'?'selected':'' ?>>Sudah</option><option value="belum" <?= ($filterRfid??'')==='belum'?'selected':'' ?>>Belum</option></select>
                 <select name="status" class="input-field" style="flex:1;min-width:0;height:36px;font-size:12px;"><option value="">Status</option><option value="aktif" <?= ($filterStat??'')==='aktif'?'selected':'' ?>>Aktif</option><option value="nonaktif" <?= ($filterStat??'')==='nonaktif'?'selected':'' ?>>Non</option></select>
                 <button type="submit" class="btn btn-primary" style="height:36px;padding:0 14px;flex-shrink:0;"><i class="ti ti-filter"></i> Filter</button>
@@ -116,14 +116,14 @@
                                 <i class="ti ti-edit"></i>
                             </button>
                             <!-- Daftarkan/Ganti RFID -->
-                            <button class="btn btn-primary btn-sm" onclick="openRfidModal(<?= esc($a['id']) ?>, '<?= esc($a['nama']) ?>', '<?= esc($a['uid_rfid'] ?? '') ?>')" title="<?= $a['uid_rfid'] ? 'Ganti Kartu RFID' : 'Daftarkan Kartu RFID' ?>">
+                            <button class="btn btn-primary btn-sm" onclick="openRfidModal(<?= (int) $a['id'] ?>, '<?= esc($a['nama'], 'js') ?>', '<?= esc($a['uid_rfid'] ?? '', 'js') ?>')" title="<?= $a['uid_rfid'] ? 'Ganti Kartu RFID' : 'Daftarkan Kartu RFID' ?>">
                                 <i class="ti ti-wifi"></i>
                             </button>
                             <!-- Nonaktifkan / Aktifkan -->
                             <?php if ($a['status']==='aktif'): ?>
                             <button class="btn btn-indigo btn-sm" title="Nonaktifkan" onclick="showModal({
-                                title: 'Nonaktifkan <?= esc(addslashes($a['nama'])) ?>?',
-                                message: 'Anggota tidak bisa absen di RAT berikutnya. Data histori absensi tetap tersimpan.',
+                                title: 'Nonaktifkan <?= esc($a['nama'], 'js') ?>?',
+                                message: 'Anggota nonaktif tidak bisa absen. Riwayat absensinya tetap tersimpan.',
                                 confirmText: 'Nonaktifkan',
                                 type: 'warning',
                                 onConfirm: () => document.getElementById('form-nonaktif-<?= $a['id'] ?>').submit()
@@ -137,10 +137,11 @@
                             </button>
                             <form id="form-aktif-<?= $a['id'] ?>" action="/anggota/<?= $a['id'] ?>/aktifkan" method="post" style="display:none;"><?= csrf_field() ?></form>
                             <?php endif; ?>
-                            <!-- Hapus — histori absensi tetap ada via snapshot -->
+                            <!-- Hapus — hanya untuk anggota yang belum pernah absen (yang sudah absen cukup dinonaktifkan) -->
+                            <?php if ($a['boleh_hapus']): ?>
                             <button class="btn btn-danger btn-sm" title="Hapus" onclick="showModal({
-                                title: 'Hapus <?= esc(addslashes($a['nama'])) ?>?',
-                                message: 'Data anggota dihapus. Histori absensi yang sudah tercatat tetap ada dan ditampilkan sebagai nama asli + keterangan (dihapus).',
+                                title: 'Hapus <?= esc($a['nama'], 'js') ?>?',
+                                message: 'Data anggota ini dihapus permanen.',
                                 confirmText: 'Hapus',
                                 type: 'danger',
                                 onConfirm: () => document.getElementById('form-hapus-<?= $a['id'] ?>').submit()
@@ -148,6 +149,9 @@
                                 <i class="ti ti-trash"></i>
                             </button>
                             <form id="form-hapus-<?= $a['id'] ?>" action="/anggota/<?= $a['id'] ?>/hapus" method="post" style="display:none;"><?= csrf_field() ?></form>
+                            <?php else: ?>
+                            <span class="btn btn-ghost btn-sm" style="opacity:.45;cursor:default;" title="Sudah punya riwayat absensi — gunakan Nonaktifkan"><i class="ti ti-trash"></i></span>
+                            <?php endif; ?>
                         </div>
                     </td>
                 </tr>
@@ -163,6 +167,10 @@
     </div>
 </div>
 
+<!-- Pilihan isian departemen/section/shift diambil dari data yang ada (nilai baru tetap boleh diketik) -->
+<datalist id="dl-dept"><?php foreach ($daftarDept as $d): ?><option value="<?= esc($d) ?>"><?php endforeach; ?></datalist>
+<datalist id="dl-sect"><?php foreach ($daftarSect as $d): ?><option value="<?= esc($d) ?>"><?php endforeach; ?></datalist>
+<datalist id="dl-shift"><?php foreach ($daftarShift as $d): ?><option value="<?= esc($d) ?>"><?php endforeach; ?></datalist>
 <!-- Modal Tambah Anggota -->
 <div id="modal-tambah" style="display:none;" class="modal-overlay" onclick="if(event.target===this)closeAllModals()">
     <div class="modal-box" style="max-width:520px;">
@@ -189,30 +197,15 @@
             <div style="display:grid;grid-template-columns:1fr 1fr 80px;gap:12px;margin-bottom:12px;">
                 <div>
                     <label class="form-label">Departemen</label>
-                    <select name="departemen" class="input-field">
-                        <option value="">— Pilih —</option>
-                        <?php foreach(['ACCOUNTING','HUMAN RESOURCE','MAINTENANCE','MANUFACTURING ENGINEERING','OFFICE','OPERATION CONTROL','OPERATION EFFICIENCY','PARTS PRODUCTION','PROCESS ENGINEERING','PRODUCTION','PURCHASING','QUALITY ASSURANCE','QUALITY ENGINEERING','SYSTEM'] as $d): ?>
-                            <option value="<?= $d ?>"><?= $d ?></option>
-                        <?php endforeach; ?>
-                    </select>
+                    <input type="text" name="departemen" list="dl-dept" class="input-field" placeholder="Pilih / ketik" autocomplete="off" style="text-transform:uppercase;">
                 </div>
                 <div>
                     <label class="form-label">Section</label>
-                    <select name="section" class="input-field">
-                        <option value="">— Pilih —</option>
-                        <?php foreach(['ACCOUNTING','BONDING','BUSINESS CONTROL','DMP, BUSH, HCG, PRODUCTION','FACILITY MAINTENANCE','GENBA KAIZEN','GENERAL AFFAIRS','INFRASTRUCTURE','MACHINE ENGINEERING','MACHINE MAINTENANCE','MATERIAL ENGINEERING','MOLD CONTROL','OR, GKT PRODUCTION','OSP-1 (110T HP)','OSP-2 (60T HP AND TENSIONER)','OSP-3 (INJECTION, SEMI TRANSFER)','PROCESS ENGINEERING','PRODUCTION PLANING AND CONTROL','PURCHASING','QUALITY ASSURANCE','QUALITY ENGINEERING','QUALITY INSPECTION','RUBBER','SHE IS BCM OFFICE','SPRING','STAMPING','TECHNOLOGY CONTROL','TOOLING','TOTAL COST DOWN'] as $s): ?>
-                            <option value="<?= $s ?>"><?= $s ?></option>
-                        <?php endforeach; ?>
-                    </select>
+                    <input type="text" name="section" list="dl-sect" class="input-field" placeholder="Pilih / ketik" autocomplete="off" style="text-transform:uppercase;">
                 </div>
                 <div>
                     <label class="form-label">Shift</label>
-                    <select name="shift" class="input-field">
-                        <option value="">-</option>
-                        <option value="A">A</option>
-                        <option value="B">B</option>
-                        <option value="N">N</option>
-                    </select>
+                    <input type="text" name="shift" list="dl-shift" class="input-field" placeholder="-" autocomplete="off" style="text-transform:uppercase;">
                 </div>
             </div>
             <div style="margin-bottom:16px;">
@@ -281,30 +274,15 @@
             <div style="display:grid;grid-template-columns:1fr 1fr 80px;gap:10px;margin-bottom:16px;">
                 <div>
                     <label class="form-label">Departemen</label>
-                    <select name="departemen" id="edit-departemen" class="input-field">
-                        <option value="">— Pilih —</option>
-                        <?php foreach(['ACCOUNTING','HUMAN RESOURCE','MAINTENANCE','MANUFACTURING ENGINEERING','OFFICE','OPERATION CONTROL','OPERATION EFFICIENCY','PARTS PRODUCTION','PROCESS ENGINEERING','PRODUCTION','PURCHASING','QUALITY ASSURANCE','QUALITY ENGINEERING','SYSTEM'] as $d): ?>
-                            <option value="<?= $d ?>"><?= $d ?></option>
-                        <?php endforeach; ?>
-                    </select>
+                    <input type="text" name="departemen" id="edit-departemen" list="dl-dept" class="input-field" placeholder="Pilih / ketik" autocomplete="off" style="text-transform:uppercase;">
                 </div>
                 <div>
                     <label class="form-label">Section</label>
-                    <select name="section" id="edit-section" class="input-field">
-                        <option value="">— Pilih —</option>
-                        <?php foreach(['ACCOUNTING','BONDING','BUSINESS CONTROL','DMP, BUSH, HCG, PRODUCTION','FACILITY MAINTENANCE','GENBA KAIZEN','GENERAL AFFAIRS','INFRASTRUCTURE','MACHINE ENGINEERING','MACHINE MAINTENANCE','MATERIAL ENGINEERING','MOLD CONTROL','OR, GKT PRODUCTION','OSP-1 (110T HP)','OSP-2 (60T HP AND TENSIONER)','OSP-3 (INJECTION, SEMI TRANSFER)','PROCESS ENGINEERING','PRODUCTION PLANING AND CONTROL','PURCHASING','QUALITY ASSURANCE','QUALITY ENGINEERING','QUALITY INSPECTION','RUBBER','SHE IS BCM OFFICE','SPRING','STAMPING','TECHNOLOGY CONTROL','TOOLING','TOTAL COST DOWN'] as $s): ?>
-                            <option value="<?= $s ?>"><?= $s ?></option>
-                        <?php endforeach; ?>
-                    </select>
+                    <input type="text" name="section" id="edit-section" list="dl-sect" class="input-field" placeholder="Pilih / ketik" autocomplete="off" style="text-transform:uppercase;">
                 </div>
                 <div>
                     <label class="form-label">Shift</label>
-                    <select name="shift" id="edit-shift" class="input-field">
-                        <option value="">-</option>
-                        <option value="A">A</option>
-                        <option value="B">B</option>
-                        <option value="N">N</option>
-                    </select>
+                    <input type="text" name="shift" id="edit-shift" list="dl-shift" class="input-field" placeholder="-" autocomplete="off" style="text-transform:uppercase;">
                 </div>
             </div>
             <div style="display:flex;gap:8px;justify-content:flex-end;">
@@ -338,101 +316,18 @@
                 <p id="uid-preview" style="font-size:12px;color:#0960A8;margin:6px 0 0;min-height:18px;"></p>
             </div>
             <div style="display:flex;gap:8px;justify-content:flex-end;">
+                <button type="button" id="btn-lepas-kartu" class="btn btn-ghost" style="margin-right:auto;display:none;"><i class="ti ti-x"></i> Lepas Kartu</button>
                 <button type="button" onclick="closeAllModals()" class="btn btn-ghost">Batal</button>
                 <button type="submit" class="btn btn-primary">
                     <i class="ti ti-wifi"></i> Simpan Kartu
                 </button>
             </div>
         </form>
+        <form id="form-lepas-kartu" method="post" style="display:none;"><?= csrf_field() ?></form>
     </div>
 </div>
 
-<script>
-function openModal(id) {
-    const el = document.getElementById(id);
-    if (el && el.parentElement !== document.body) {
-        document.body.appendChild(el);
-    }
-    if (el) el.style.display = 'flex';
-    if (id === 'modal-tambah') setTimeout(() => document.getElementById('uid-tambah')?.focus(), 100);
-    if (id === 'modal-rfid')   setTimeout(() => document.getElementById('input-rfid-modal')?.focus(), 100);
-}
-
-function closeAllModals() {
-    ['modal-tambah','modal-import','modal-edit','modal-rfid','modal-hapus-semua'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = 'none';
-    });
-}
-
-// ESC untuk tutup modal
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAllModals(); });
-
-function cekNipInput(el) {
-    const err = document.getElementById('nip-error');
-    if (!err) return;
-    const valid = el.value.length === 6 && /^\d{6}$/.test(el.value);
-    err.style.display = el.value.length > 0 && !valid ? 'block' : 'none';
-    el.style.borderColor = el.value.length > 0 && !valid ? '#b3262b' : '';
-}
-
-function validasiNip(form) {
-    const nip = form.querySelector('[name="nip"]');
-    if (!nip) return true;
-    if (nip.value.length !== 6 || !/^\d{6}$/.test(nip.value)) {
-        nip.focus();
-        nip.style.borderColor = '#b3262b';
-        const err = document.getElementById('nip-error');
-        if (err) err.style.display = 'block';
-        showToast('NIP harus tepat 6 digit angka!', 'error');
-        return false;
-    }
-    return true;
-}
-
-function showToast(msg, type='success') {
-    const t = document.createElement('div');
-    t.className = 'toast toast-' + (type==='error' ? 'error' : 'success');
-    t.innerHTML = `<i class="ti ti-${type==='error'?'alert-circle':'circle-check'}" style="font-size:18px;flex-shrink:0;"></i><span>${msg}</span><button class="toast-close" onclick="this.parentElement.remove()">×</button>`;
-    document.body.appendChild(t);
-    setTimeout(() => { t.style.opacity='0'; t.style.transition='opacity 0.4s'; setTimeout(()=>t.remove(),400); }, 4000);
-}
-
-function openEditModal(anggota) {
-    document.getElementById('edit-pr').value   = anggota.nip;
-    document.getElementById('edit-nama').value = anggota.nama;
-    // Isi dropdown departemen, section, shift
-    const dept  = document.getElementById('edit-departemen');
-    const sect  = document.getElementById('edit-section');
-    const shift = document.getElementById('edit-shift');
-    if (dept)  dept.value  = anggota.departemen || '';
-    if (sect)  sect.value  = anggota.section    || '';
-    if (shift) shift.value = anggota.shift      || '';
-    document.getElementById('form-edit').action = '/anggota/' + anggota.id;
-    openModal('modal-edit');
-}
-
-function openRfidModal(id, nama, uidLama) {
-    document.getElementById('rfid-nama').textContent = nama;
-    document.getElementById('rfid-modal-title').textContent = uidLama ? 'Ganti Kartu RFID' : 'Daftarkan Kartu RFID';
-    document.getElementById('input-rfid-modal').value = '';
-    document.getElementById('uid-preview').textContent = uidLama ? 'Kartu sekarang: ' + uidLama : '';
-    document.getElementById('form-rfid').action = '/anggota/' + id + '/rfid';
-    openModal('modal-rfid');
-}
-
-// Preview UID saat user tap kartu di modal RFID
-const rfidInput = document.getElementById('input-rfid-modal');
-if (rfidInput) {
-    rfidInput.addEventListener('input', function() {
-        const preview = document.getElementById('uid-preview');
-        if (this.value) {
-            preview.textContent = 'UID terdeteksi: ' + this.value;
-            preview.style.color = '#16a34a';
-        }
-    });
-}
-</script>
+<script src="<?= aset('js/anggota.js') ?>"></script>
 
 <!-- Modal Hapus Semua Anggota -->
 <div id="modal-hapus-semua" style="display:none;" class="modal-overlay" onclick="if(event.target===this)closeAllModals()">
@@ -480,15 +375,6 @@ if (rfidInput) {
     </div>
 </div>
 
-<script>
-function cekKonfirmasi() {
-    const val = document.getElementById('input-konfirmasi').value;
-    const btn = document.getElementById('btn-hapus-semua');
-    const match = val === 'HAPUS SEMUA DATA ANGGOTA';
-    btn.disabled = !match;
-    btn.style.opacity = match ? '1' : '0.4';
-    btn.style.cursor  = match ? 'pointer' : 'not-allowed';
-}
-</script>
+
 
 <?= $this->endSection() ?>

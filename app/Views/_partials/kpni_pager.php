@@ -24,10 +24,10 @@ $ho = 'onmouseover="this.style.background=\'#E8F4FD\';this.style.borderColor=\'#
 <div style="display:flex;flex-wrap:wrap;gap:4px;justify-content:center;align-items:center;padding:4px 0;">
     <?php if ($currentPage > 1): ?>
         <a href="<?= $pageUrl(1) ?>" style="<?= $sN ?>" <?= $ho ?>>«</a>
-        <a href="<?= $pageUrl($currentPage - 1) ?>" style="<?= $sN ?>" <?= $ho ?>>‹ Prev</a>
+        <a href="<?= $pageUrl($currentPage - 1) ?>" style="<?= $sN ?>" <?= $ho ?>>‹ Sebelumnya</a>
     <?php else: ?>
         <span style="<?= $sD ?>">«</span>
-        <span style="<?= $sD ?>">‹ Prev</span>
+        <span style="<?= $sD ?>">‹ Sebelumnya</span>
     <?php endif; ?>
 
     <?php foreach ($pager->links() as $link): ?>
@@ -44,10 +44,10 @@ $ho = 'onmouseover="this.style.background=\'#E8F4FD\';this.style.borderColor=\'#
     <?php endforeach; ?>
 
     <?php if ($currentPage < $pageCount): ?>
-        <a href="<?= $pageUrl($currentPage + 1) ?>" style="<?= $sN ?>" <?= $ho ?>>Next ›</a>
+        <a href="<?= $pageUrl($currentPage + 1) ?>" style="<?= $sN ?>" <?= $ho ?>>Berikutnya ›</a>
         <a href="<?= $pageUrl($pageCount) ?>" style="<?= $sN ?>" <?= $ho ?>>»</a>
     <?php else: ?>
-        <span style="<?= $sD ?>">Next ›</span>
+        <span style="<?= $sD ?>">Berikutnya ›</span>
         <span style="<?= $sD ?>">»</span>
     <?php endif; ?>
 </div>

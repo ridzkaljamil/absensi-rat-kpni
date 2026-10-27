@@ -23,6 +23,7 @@ class DoorprizeItemModel extends Model
         $sudahDiundi = $db->table('tb_doorprize_winners')
             ->select('id_item, COUNT(*) as jumlah_diundi')
             ->where('id_rat', $idRat)
+            ->where('hangus', 0)
             ->groupBy('id_item')
             ->get()->getResultArray();
 

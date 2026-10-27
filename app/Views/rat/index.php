@@ -110,9 +110,10 @@
                     <td style="text-align:right;">
                         <div style="display:flex;gap:6px;justify-content:flex-end;align-items:center;">
                             <?php if (!$sedangDipilih): ?>
-                            <a href="/rat/pilih/<?= esc($r['id']) ?>" class="btn btn-primary btn-sm">
-                                <i class="ti ti-cursor-text"></i> Pilih
-                            </a>
+                            <form action="/rat/pilih/<?= (int) $r['id'] ?>" method="post" style="margin:0;">
+                                <?= csrf_field() ?>
+                                <button type="submit" class="btn btn-primary btn-sm"><i class="ti ti-cursor-text"></i> Pilih</button>
+                            </form>
                             <?php else: ?>
                             <span class="btn btn-ghost btn-sm" style="cursor:default;opacity:0.6;">
                                 <i class="ti ti-check"></i> Dipilih
@@ -122,7 +123,7 @@
                             <?php if ($r['status']==='aktif'): ?>
                             <button class="btn btn-indigo btn-sm" onclick="showModal({
                                 title: 'Selesaikan RAT?',
-                                message: 'RAT <?= esc(addslashes($r['nama_rat'])) ?> akan ditandai selesai. Data tetap tersimpan.',
+                                message: '<?= esc($r['nama_rat'], 'js') ?> akan ditandai selesai: absensi ditutup, data tetap tersimpan, dan bisa diaktifkan lagi kalau perlu.',
                                 confirmText: 'Selesaikan',
                                 type: 'warning',
                                 onConfirm: () => document.getElementById('form-selesai-<?= $r['id'] ?>').submit()
@@ -132,11 +133,24 @@
                             <form id="form-selesai-<?= $r['id'] ?>" action="/rat/<?= $r['id'] ?>/selesaikan" method="post" style="display:none;">
                                 <?= csrf_field() ?>
                             </form>
+                            <?php else: ?>
+                            <button class="btn btn-ghost btn-sm" onclick="showModal({
+                                title: 'Aktifkan lagi?',
+                                message: '<?= esc($r['nama_rat'], 'js') ?> akan menjadi RAT aktif dan absensi dibuka kembali. RAT yang sedang aktif akan ditandai selesai.',
+                                confirmText: 'Aktifkan',
+                                type: 'primary',
+                                onConfirm: () => document.getElementById('form-aktif-<?= $r['id'] ?>').submit()
+                            })">
+                                <i class="ti ti-refresh"></i> Aktifkan
+                            </button>
+                            <form id="form-aktif-<?= $r['id'] ?>" action="/rat/<?= $r['id'] ?>/aktifkan" method="post" style="display:none;">
+                                <?= csrf_field() ?>
+                            </form>
                             <?php endif; ?>
 
                             <button class="btn btn-danger btn-sm" onclick="showModal({
                                 title: 'Hapus RAT?',
-                                message: 'Menghapus RAT ini akan menghapus semua data sesi dan absensi terkait. Tindakan ini tidak bisa dibatalkan.',
+                                message: 'Sesi, peserta, dan doorprize RAT ini ikut terhapus. RAT yang sudah punya data kehadiran tidak bisa dihapus. Tindakan ini tidak bisa dibatalkan.',
                                 confirmText: 'Hapus Permanen',
                                 type: 'danger',
                                 onConfirm: () => document.getElementById('form-hapus-<?= $r['id'] ?>').submit()

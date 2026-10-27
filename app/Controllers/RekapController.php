@@ -2,14 +2,15 @@
 
 namespace App\Controllers;
 
+use App\Libraries\ExcelExport;
 use App\Models\AbsensiModel;
 use App\Models\AnggotaModel;
 use App\Models\RatModel;
 use App\Models\SesiModel;
 use App\Models\PesertaRatModel;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
@@ -36,7 +37,7 @@ class RekapController extends BaseController
      */
     public function cetak()
     {
-        $idRat = session()->get('rat_dipilih');
+        $idRat = $this->idRatDipilih();
         if (! $idRat) return redirect()->to('/rekap')->with('error', 'Pilih RAT terlebih dahulu.');
 
         $rat         = $this->ratModel->find($idRat);
@@ -63,7 +64,7 @@ class RekapController extends BaseController
      */
     public function index()
     {
-        $idRat = session()->get('rat_dipilih');
+        $idRat = $this->idRatDipilih();
 
         if (! $idRat) {
             return redirect()->to('/rat')
@@ -119,7 +120,7 @@ class RekapController extends BaseController
         $namaFile = 'Rekap_' . $this->namaAman($label) . '_' . $rat['tahun_buku'] . '_' . date('Ymd_His') . '.xlsx';
         $this->catatLog("Download rekap {$label} RAT {$rat['tahun_buku']}");
 
-        return $this->outputExcel($spreadsheet, $namaFile);
+        return ExcelExport::unduh($spreadsheet, $namaFile);
     }
 
     /**
@@ -131,7 +132,7 @@ class RekapController extends BaseController
      */
     public function downloadGabungan()
     {
-        $idRat = session()->get('rat_dipilih');
+        $idRat = $this->idRatDipilih();
 
         if (! $idRat) {
             return redirect()->to('/rekap')->with('error', 'Pilih RAT terlebih dahulu.');
@@ -147,17 +148,15 @@ class RekapController extends BaseController
         $spreadsheet = new Spreadsheet();
         $spreadsheet->removeSheetByIndex(0); // hapus sheet default kosong
 
-        $idSesiList = array_column($daftarSesi, 'id');
-
         // Buat sheet per sesi
-        $judulDipakai = [];
+        $judulDipakai = ['summary doorprize' => true]; // nama sheet ringkasan dicadangkan
         foreach ($daftarSesi as $i => $sesi) {
             $sheet = $spreadsheet->createSheet($i);
             $judul = $this->judulSheet($sesi['nama_sesi']);
-            if (isset($judulDipakai[strtolower($judul)])) {
-                $judul = mb_substr($judul, 0, 26) . ' (' . ($i + 1) . ')';
+            for ($n = 2; isset($judulDipakai[mb_strtolower($judul)]); $n++) {
+                $judul = mb_substr($this->judulSheet($sesi['nama_sesi']), 0, 25) . ' (' . $n . ')';
             }
-            $judulDipakai[strtolower($judul)] = true;
+            $judulDipakai[mb_strtolower($judul)] = true;
             $sheet->setTitle($judul);
 
             $dataAbsen = $this->absensiModel->getDetailBySesi((int) $sesi['id']);
@@ -166,10 +165,12 @@ class RekapController extends BaseController
             $this->formatSheet($sheet, ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'], count($dataAbsen) + 7);
         }
 
-        // Sheet Summary (F-15)
-        $sheetSummary = $spreadsheet->createSheet(count($daftarSesi));
+        // Sheet Summary (F-15) — kriteria sama dengan halaman Doorprize: sesi yang punya daftar peserta
+        $jumlahPeserta = $this->pesertaModel->hitungPerSesi($idRat);
+        $sesiDipakai   = array_values(array_filter($daftarSesi, static fn ($s) => (int) ($jumlahPeserta[$s['id']] ?? 0) > 0));
+        $sheetSummary  = $spreadsheet->createSheet(count($daftarSesi));
         $sheetSummary->setTitle('Summary Doorprize');
-        $this->tulisSheetSummary($sheetSummary, $rat, $daftarSesi, $idSesiList);
+        $this->tulisSheetSummary($sheetSummary, $rat, $sesiDipakai, array_column($sesiDipakai, 'id'));
 
         // Aktifkan sheet pertama saat file dibuka
         $spreadsheet->setActiveSheetIndex(0);
@@ -178,7 +179,7 @@ class RekapController extends BaseController
 
         $this->catatLog("Download rekap gabungan RAT {$rat['tahun_buku']} (" . count($daftarSesi) . ' sesi)');
 
-        return $this->outputExcel($spreadsheet, $namaFile);
+        return ExcelExport::unduh($spreadsheet, $namaFile);
     }
 
     // ─────────────────────────────────────────────
@@ -198,15 +199,7 @@ class RekapController extends BaseController
         $sheet->setCellValue('A5', 'Jumlah Hadir: ' . $jumlahHadir . ' orang');
         $sheet->setCellValue('A6', 'Dicetak: ' . date('d/m/Y H:i:s'));
 
-        // Header kolom tabel (baris 7) — ditambah Departemen, Section, Shift
-        $sheet->setCellValue('A7', 'No.');
-        $sheet->setCellValue('B7', 'NIP');
-        $sheet->setCellValue('C7', 'Nama Anggota');
-        $sheet->setCellValue('D7', 'Departemen');
-        $sheet->setCellValue('E7', 'Section');
-        $sheet->setCellValue('F7', 'Shift');
-        $sheet->setCellValue('G7', 'Waktu Absen');
-        $sheet->setCellValue('H7', 'Metode');
+        ExcelExport::judul($sheet, ['No.', 'NIP', 'Nama Anggota', 'Departemen', 'Section', 'Shift', 'Waktu Absen', 'Metode'], 7, ExcelExport::NAVY);
 
         // Style header info
         $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(13);
@@ -217,39 +210,19 @@ class RekapController extends BaseController
             $sheet->getStyle($cell)->getFont()->setSize(10);
         }
 
-        // Style header kolom
-        $headerStyle = [
-            'font'      => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
-            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '022760']],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
-        ];
-        $sheet->getStyle('A7:H7')->applyFromArray($headerStyle);
     }
 
     private function tulisDataSesi($sheet, array $dataAbsen, int $startRow): void
     {
-        foreach ($dataAbsen as $i => $baris) {
+        foreach ($dataAbsen as $i => $b) {
             $row = $startRow + $i;
-            $sheet->setCellValue('A' . $row, $i + 1);
-            $sheet->setCellValue('B' . $row, $baris['nip']);
-            $sheet->setCellValue('C' . $row, $baris['nama']);
-            $sheet->setCellValue('D' . $row, $baris['departemen'] ?? '-');
-            $sheet->setCellValue('E' . $row, $baris['section']    ?? '-');
-            $sheet->setCellValue('F' . $row, $baris['shift']      ?? '-');
-            $sheet->setCellValue('G' . $row, date('d/m/Y H:i:s', strtotime($baris['waktu_absen'])));
-            $sheet->setCellValue('H' . $row, strtoupper($baris['metode']));
-
-            // Warna alternating baris
-            if ($i % 2 === 1) {
-                $sheet->getStyle('A' . $row . ':H' . $row)
-                    ->getFill()->setFillType(Fill::FILL_SOLID)
-                    ->getStartColor()->setRGB('F0F7FF');
+            ExcelExport::baris($sheet, $row, [
+                $i + 1, $b['nip'], $b['nama'], $b['departemen'] ?: '-', $b['section'] ?: '-', $b['shift'] ?: '-',
+                date('d/m/Y H:i:s', strtotime($b['waktu_absen'])), strtoupper($b['metode']),
+            ], $i % 2 === 1);
+            foreach (['A', 'B', 'F', 'H'] as $kol) {
+                $sheet->getStyle($kol . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             }
-
-            $sheet->getStyle('A' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            $sheet->getStyle('B' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            $sheet->getStyle('F' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            $sheet->getStyle('H' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
         }
     }
 
@@ -258,7 +231,7 @@ class RekapController extends BaseController
         // Header info
         $sheet->setCellValue('A1', 'SUMMARY DOORPRIZE — ' . strtoupper($rat['nama_rat']));
         $namaSesi = array_map(static fn ($s) => label_sesi($s['nama_sesi']), $daftarSesi);
-        $sheet->setCellValue('A2', 'Kriteria: hadir di SELURUH sesi (' . implode(', ', $namaSesi) . ')');
+        $sheet->setCellValue('A2', 'Kriteria: hadir di SELURUH sesi yang punya daftar peserta (' . ($namaSesi ? implode(', ', $namaSesi) : 'belum ada') . ')');
         $sheet->setCellValue('A3', 'Dicetak: ' . date('d/m/Y H:i:s'));
 
         $kolom = ['A', 'B', 'C'];
@@ -275,28 +248,15 @@ class RekapController extends BaseController
         $sheet->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
         // Header kolom tabel (baris 5)
-        $sheet->setCellValue('A5', 'No.');
-        $sheet->setCellValue('B5', 'NIP');
-        $sheet->setCellValue('C5', 'Nama Anggota');
-        foreach ($daftarSesi as $i => $sesi) {
-            $sheet->setCellValue($kolom[3 + $i] . '5', label_sesi($sesi['nama_sesi']));
-        }
-        $sheet->setCellValue($lastKolom . '5', 'Eligible Doorprize');
-
-        $headerStyle = [
-            'font'      => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
-            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '024ad8']],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
-        ];
-        $sheet->getStyle('A5:' . $lastKolom . '5')->applyFromArray($headerStyle);
+        ExcelExport::judul($sheet, array_merge(['No.', 'NIP', 'Nama Anggota'], $namaSesi, ['Eligible Doorprize']), 5);
 
         // Data summary per anggota
         $dataAnggota = $this->absensiModel->getSummaryPerAnggota($idSesiList, (int) $rat['id']);
         foreach ($dataAnggota as $i => $baris) {
             $row = 6 + $i;
             $sheet->setCellValue('A' . $row, $i + 1);
-            $sheet->setCellValue('B' . $row, $baris['nip']);
-            $sheet->setCellValue('C' . $row, $baris['nama']);
+            $sheet->setCellValueExplicit('B' . $row, (string) $baris['nip'], DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit('C' . $row, (string) $baris['nama'], DataType::TYPE_STRING);
 
             foreach ($daftarSesi as $j => $sesi) {
                 $hadir = $baris['hadir_' . $sesi['id']] ?? false;
@@ -378,59 +338,50 @@ class RekapController extends BaseController
         $sheet->freezePane('A' . ($headerRow + 1));
     }
 
-    private function outputExcel(Spreadsheet $spreadsheet, string $namaFile): \CodeIgniter\HTTP\ResponseInterface
-    {
-        $writer = new Xlsx($spreadsheet);
-
-        ob_start();
-        $writer->save('php://output');
-        $content = ob_get_clean();
-
-        return $this->response
-            ->setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-            ->setHeader('Content-Disposition', 'attachment; filename="' . $namaFile . '"')
-            ->setHeader('Cache-Control', 'max-age=0')
-            ->setBody($content);
-    }
-
     // ── Backup SQL ────────────────────────────────────────────────────────
+    /**
+     * Backup lengkap yang bisa di-import ulang lewat phpMyAdmin.
+     * INSERT dipecah per 500 baris supaya tidak melebihi batas max_allowed_packet saat restore.
+     */
     public function backupSql()
     {
-        $db     = \Config\Database::connect();
-        $tables = ['tb_rat', 'tb_sesi', 'tb_anggota', 'tb_peserta_rat', 'tb_absensi', 'tb_doorprize_items', 'tb_doorprize_winners', 'tb_users', 'tb_log_aktivitas'];
+        $db      = db_connect();
+        $tables  = ['migrations', 'tb_users', 'tb_rat', 'tb_sesi', 'tb_anggota', 'tb_peserta_rat', 'tb_absensi', 'tb_doorprize_items', 'tb_doorprize_winners', 'tb_log_aktivitas'];
         $tanggal = date('Y-m-d_H-i-s');
-        $sql    = "-- Backup Database KPNI\n-- Tanggal: {$tanggal}\n-- Sistem Absensi RAT KPNI\n\nSET FOREIGN_KEY_CHECKS=0;\n\n";
+        $out     = fopen('php://temp', 'w+');
 
+        fwrite($out, "-- Backup Database Sistem Absensi RAT KPNI\n-- Tanggal: {$tanggal}\n-- Berisi data pribadi anggota, simpan dengan aman.\n\n"
+            . "SET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\nSET SQL_MODE='NO_AUTO_VALUE_ON_ZERO';\n\n");
+
+        $db->query('START TRANSACTION WITH CONSISTENT SNAPSHOT'); // semua tabel diambil dari satu titik waktu
         foreach ($tables as $table) {
-            // DROP + CREATE
-            $create = $db->query("SHOW CREATE TABLE `{$table}`")->getResultArray();
-            if (empty($create)) continue;
-            $createSql = $create[0]['Create Table'];
-            $sql .= "-- Tabel: {$table}\n";
-            $sql .= "DROP TABLE IF EXISTS `{$table}`;\n";
-            $sql .= $createSql . ";\n\n";
+            if (! $db->tableExists($table)) continue;
+            $create = $db->query("SHOW CREATE TABLE `{$table}`")->getRowArray();
+            fwrite($out, "-- Tabel: {$table}\nDROP TABLE IF EXISTS `{$table}`;\n" . $create['Create Table'] . ";\n\n");
 
-            // INSERT data
-            $rows = $db->table($table)->get()->getResultArray();
-            if (!empty($rows)) {
+            $kolomUrut = $db->getFieldNames($table)[0];
+            for ($offset = 0; ; $offset += 500) {
+                $rows = $db->table($table)->orderBy($kolomUrut, 'ASC')->limit(500, $offset)->get()->getResultArray();
+                if ($rows === []) break;
                 $cols = '`' . implode('`, `', array_keys($rows[0])) . '`';
-                $sql .= "INSERT INTO `{$table}` ({$cols}) VALUES\n";
-                $vals = [];
-                foreach ($rows as $row) {
-                    $escaped = array_map(static fn ($v) => $v === null ? 'NULL' : $db->escape((string) $v), $row);
-                    $vals[] = '(' . implode(', ', $escaped) . ')';
-                }
-                $sql .= implode(",\n", $vals) . ";\n\n";
+                $vals = array_map(static fn ($row) => '(' . implode(', ', array_map(static fn ($v) => $v === null ? 'NULL' : $db->escape((string) $v), $row)) . ')', $rows);
+                fwrite($out, "INSERT INTO `{$table}` ({$cols}) VALUES\n" . implode(",\n", $vals) . ";\n");
+                if (count($rows) < 500) break;
             }
+            fwrite($out, "\n");
         }
+        $db->query('COMMIT');
+        fwrite($out, "SET FOREIGN_KEY_CHECKS=1;\n");
+        rewind($out);
+        $sql = stream_get_contents($out);
+        fclose($out);
 
-        $sql .= "SET FOREIGN_KEY_CHECKS=1;\n";
         $this->catatLog('Download backup database (SQL)');
 
         return $this->response
-            ->setHeader('Content-Type', 'application/octet-stream')
+            ->setHeader('Content-Type', 'application/sql; charset=utf-8')
             ->setHeader('Content-Disposition', "attachment; filename=\"backup_kpni_{$tanggal}.sql\"")
-            ->setHeader('Cache-Control', 'max-age=0')
+            ->setHeader('Cache-Control', 'no-store')
             ->setBody($sql);
     }
 
@@ -454,48 +405,26 @@ class RekapController extends BaseController
         $spreadsheet->removeSheetByIndex(0);
 
         foreach ($tables as $table => $sheetName) {
-            $rows = $db->table($table)->get()->getResultArray();
-            $sheet = $spreadsheet->createSheet();
-            $sheet->setTitle($sheetName);
+            $builder = $db->table($table);
+            if ($table === 'tb_users') {
+                $builder->select('id, username, role, nama_lengkap, created_at, updated_at'); // hash password tidak ikut
+            }
+            $rows  = $builder->get()->getResultArray();
+            $sheet = $spreadsheet->createSheet()->setTitle($sheetName);
 
-            if (empty($rows)) {
+            if ($rows === []) {
                 $sheet->setCellValue('A1', 'Tidak ada data');
                 continue;
             }
-
-            // Header
-            $headers = array_keys($rows[0]);
-            foreach ($headers as $i => $h) {
-                $col = Coordinate::stringFromColumnIndex($i + 1);
-                $sheet->setCellValue($col . '1', $h);
-            }
-            $sheet->getStyle('A1:' . Coordinate::stringFromColumnIndex(count($headers)) . '1')
-                ->applyFromArray([
-                    'font'      => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
-                    'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '022760']],
-                    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
-                ]);
-
-            // Data
-            foreach ($rows as $r => $row) {
-                foreach (array_values($row) as $c => $val) {
-                    $col = Coordinate::stringFromColumnIndex($c + 1);
-                    $sheet->setCellValue($col . ($r + 2), $val);
-                }
-                if ($r % 2 === 1) {
-                    $sheet->getStyle('A' . ($r+2) . ':' . Coordinate::stringFromColumnIndex(count($headers)) . ($r+2))
-                        ->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('F0F7FF');
-                }
-            }
-
-            foreach (range(1, count($headers)) as $i) {
-                $sheet->getColumnDimensionByColumn($i)->setAutoSize(true);
-            }
+            // Semua sel backup ditulis sebagai teks apa adanya
+            ExcelExport::tabel($sheet, array_keys($rows[0]), array_map(
+                static fn ($r) => array_map(static fn ($v) => $v === null ? '' : (string) $v, array_values($r)), $rows
+            ), ExcelExport::NAVY);
         }
 
         $this->catatLog('Download backup database (Excel)');
 
-        return $this->outputExcel($spreadsheet, "backup_kpni_{$tanggal}.xlsx");
+        return ExcelExport::unduh($spreadsheet, "backup_kpni_{$tanggal}.xlsx");
     }
 
     /**
@@ -503,15 +432,15 @@ class RekapController extends BaseController
      */
     public function exportFoto($idSesi)
     {
-        if (session('role') !== 'admin') return redirect()->to('/dashboard');
-
         $sesi = $this->sesiModel->find($idSesi);
         if (! $sesi || (int) $sesi['id_rat'] !== $this->idRatDipilih()) return redirect()->to('/rekap')->with('error', 'Sesi tidak ditemukan.');
 
         $rat = $this->ratModel->find($sesi['id_rat']);
 
         $rows = db_connect()->query(
-            "SELECT nip_snapshot, nama_snapshot, foto_path FROM tb_absensi WHERE id_sesi = ? AND foto_path IS NOT NULL AND foto_path != ''",
+            "SELECT ab.nip_snapshot, ab.nama_snapshot, ab.foto_path FROM tb_absensi ab
+             JOIN tb_peserta_rat p ON p.id_sesi = ab.id_sesi AND p.nip = ab.nip_snapshot
+             WHERE ab.id_sesi = ? AND ab.foto_path IS NOT NULL AND ab.foto_path != ''",
             [$idSesi]
         )->getResultArray();
 
@@ -519,34 +448,39 @@ class RekapController extends BaseController
             return redirect()->to('/rekap')->with('error', 'Tidak ada foto absensi di sesi ini.');
         }
 
-        $zip = new \ZipArchive();
         $label   = label_sesi($sesi['nama_sesi']);
         $zipName = 'Foto_Absensi_' . $this->namaAman($label) . '_' . ($rat['tahun_buku'] ?? '') . '.zip';
-        $zipPath = WRITEPATH . 'tmp/' . $zipName;
-        if (!is_dir(WRITEPATH . 'tmp/')) mkdir(WRITEPATH . 'tmp/', 0755, true);
+        if (! is_dir(WRITEPATH . 'tmp/')) mkdir(WRITEPATH . 'tmp/', 0755, true);
+        $zipPath = WRITEPATH . 'tmp/foto_' . bin2hex(random_bytes(6)) . '.zip'; // nama unik: aman kalau dua admin mengunduh bersamaan
 
-        if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
-            return redirect()->to('/rekap')->with('error', 'Gagal membuat file ZIP.');
-        }
-
-        $folderName = $this->namaAman($label);
-        foreach ($rows as $row) {
-            $filePath = FCPATH . $row['foto_path'];
-            if (file_exists($filePath)) {
-                $ext = pathinfo($filePath, PATHINFO_EXTENSION);
-                $fileName = $row['nip_snapshot'] . '_' . preg_replace('/[^a-zA-Z0-9]/', '_', $row['nama_snapshot']) . '.' . $ext;
-                $zip->addFile($filePath, $folderName . '/' . $fileName);
+        try {
+            $zip = new \ZipArchive();
+            if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
+                return redirect()->to('/rekap')->with('error', 'Gagal membuat file ZIP.');
             }
-        }
-        $zip->close();
+            $folder = $this->namaAman($label);
+            $dipakai = [];
+            $jumlah  = 0;
+            foreach ($rows as $row) {
+                $filePath = FCPATH . $row['foto_path'];
+                if (! str_starts_with($row['foto_path'], 'uploads/absensi-foto/') || ! is_file($filePath)) continue;
+                $dasar = trim(($row['nip_snapshot'] ?: 'tanpa-nip') . '_' . $this->namaAman((string) $row['nama_snapshot']), '_');
+                $nama  = $dasar;
+                for ($n = 2; isset($dipakai[$nama]); $n++) $nama = $dasar . '_' . $n;
+                $dipakai[$nama] = true;
+                $zip->addFile($filePath, $folder . '/' . $nama . '.' . pathinfo($filePath, PATHINFO_EXTENSION));
+                $jumlah++;
+            }
+            $zip->close();
 
-        // File ZIP sementara langsung dihapus setelah dibaca (dulu menumpuk di writable/tmp)
-        $isi = is_file($zipPath) ? file_get_contents($zipPath) : '';
-        @unlink($zipPath);
-        if ($isi === '') {
-            return redirect()->to('/rekap')->with('error', 'File foto tidak ditemukan di server.');
+            if ($jumlah === 0 || ! is_file($zipPath)) {
+                return redirect()->to('/rekap')->with('error', 'File foto tidak ditemukan di server.');
+            }
+            $isi = file_get_contents($zipPath);
+        } finally {
+            if (is_file($zipPath)) @unlink($zipPath);
         }
-        $this->catatLog("Download foto absensi {$label}");
+        $this->catatLog("Download foto absensi {$label} ({$jumlah} foto)");
 
         return $this->response
             ->setHeader('Content-Type', 'application/zip')

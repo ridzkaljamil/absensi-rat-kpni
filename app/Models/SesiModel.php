@@ -26,7 +26,7 @@ class SesiModel extends Model
     {
         return $this->where('id_rat', $idRat)
             ->orderBy('urutan', 'ASC')
-            ->orderBy('waktu_mulai', 'ASC')
+            ->orderBy('id', 'ASC')
             ->findAll();
     }
 
@@ -88,9 +88,13 @@ class SesiModel extends Model
         $sesi = $this->find($idSesi);
         if (!$sesi) return null;
 
+        // Urutan sama (data lama) → yang dibuat lebih dulu dianggap sebelumnya
         return $this->where('id_rat', $sesi['id_rat'])
-            ->where('urutan <', $sesi['urutan'])
-            ->orderBy('urutan', 'DESC')
+            ->groupStart()
+                ->where('urutan <', $sesi['urutan'])
+                ->orGroupStart()->where('urutan', $sesi['urutan'])->where('id <', $sesi['id'])->groupEnd()
+            ->groupEnd()
+            ->orderBy('urutan', 'DESC')->orderBy('id', 'DESC')
             ->first();
     }
 }

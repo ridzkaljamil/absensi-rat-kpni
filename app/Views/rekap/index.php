@@ -87,7 +87,7 @@
                     style="background:#E8F4FD;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:#064687;border-left:3px solid #009EE0;">
                     <i class="ti ti-star" style="font-size:12px;"></i>
                     Sheet <strong>Summary Doorprize</strong> otomatis menandai kolom "Eligible Doorprize" =
-                    <strong>YA</strong> untuk peserta yang hadir di <strong>seluruh sesi</strong>. Tidak perlu hitung
+                    <strong>YA</strong> untuk peserta yang hadir di <strong>seluruh sesi yang punya daftar peserta</strong>. Tidak perlu hitung
                     manual.
                 </div>
                 <div style="display:flex;gap:10px;flex-wrap:wrap;">

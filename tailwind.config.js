@@ -2,7 +2,7 @@
 // Hasil build: public/assets/css/app.css — ikut di-commit, jadi server
 // tidak butuh Node.js maupun internet.
 module.exports = {
-  content: ['./app/Views/**/*.php'],
+  content: ['./app/Views/**/*.php', './public/assets/js/**/*.js'],
   theme: {
     extend: {
       fontFamily: {

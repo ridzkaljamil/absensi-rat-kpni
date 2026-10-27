@@ -1,4 +1,4 @@
-// Salin font lokal & buat subset ikon Tabler (hanya ikon yang dipakai di app/Views).
+// Salin font lokal & buat subset ikon Tabler (hanya ikon yang dipakai di app/Views dan public/assets/js).
 // Jalankan: npm run build:assets  (otomatis ikut di "npm run build")
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -22,10 +22,10 @@ for (const w of [500, 700]) {
 // 2) Ikon yang dipakai di view
 const walk = (dir) => readdirSync(dir).flatMap((f) => {
   const p = join(dir, f);
-  return statSync(p).isDirectory() ? walk(p) : p.endsWith('.php') ? [p] : [];
+  return statSync(p).isDirectory() ? walk(p) : /\.(php|js)$/.test(p) ? [p] : [];
 });
 const used = new Set();
-for (const file of walk(join(ROOT, 'app/Views'))) {
+for (const file of [...walk(join(ROOT, 'app/Views')), ...walk(join(ROOT, 'public/assets/js'))]) {
   for (const m of readFileSync(file, 'utf8').matchAll(/\bti-([a-z0-9]+(?:-[a-z0-9]+)*)/g)) used.add(m[1]);
 }
 

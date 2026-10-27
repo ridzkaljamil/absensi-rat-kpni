@@ -3,6 +3,8 @@
 namespace App\Controllers;
 
 use App\Models\LogAktivitasModel;
+use App\Models\RatModel;
+use App\Models\SesiModel;
 use CodeIgniter\Controller;
 use CodeIgniter\HTTP\RequestInterface;
 use CodeIgniter\HTTP\ResponseInterface;
@@ -50,10 +52,42 @@ abstract class BaseController extends Controller
     }
 
     /**
-     * ID RAT yang sedang dipilih di session (0 kalau belum ada).
+     * ID RAT yang sedang dipakai (0 kalau belum ada RAT sama sekali).
+     *
+     * - Admin: RAT yang dipilih di menu RAT; kalau belum memilih, RAT aktif.
+     * - Operator (role user): selalu RAT aktif, supaya perangkat absensi
+     *   otomatis pindah ke RAT baru tanpa perlu logout.
      */
     protected function idRatDipilih(): int
     {
-        return (int) session()->get('rat_dipilih');
+        $session = session();
+        $id      = (int) $session->get('rat_dipilih');
+        if ($id && ! (new RatModel())->find($id)) {
+            $id = 0; // RAT yang dipilih sudah dihapus (mis. oleh admin lain)
+        }
+
+        if ($session->get('role') !== 'admin' || ! $id) {
+            $aktif   = (new RatModel())->getActive();
+            $idAktif = $aktif ? (int) $aktif['id'] : 0;
+            if ($idAktif !== $id) {
+                $session->set(['rat_dipilih' => $idAktif ?: null, 'rat_dipilih_label' => $aktif ? label_rat($aktif) : null]);
+            }
+            $id = $idAktif;
+        }
+
+        return $id;
+    }
+
+    /**
+     * Sesi berdasarkan id, hanya kalau milik RAT yang sedang dipakai.
+     */
+    protected function sesiMilikRat(int $idSesi): ?array
+    {
+        if ($idSesi <= 0) {
+            return null;
+        }
+        $sesi = (new SesiModel())->find($idSesi);
+
+        return ($sesi && (int) $sesi['id_rat'] === $this->idRatDipilih()) ? $sesi : null;
     }
 }

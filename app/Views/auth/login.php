@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login — Sistem Absensi RAT KPNI</title>
     <link rel="icon" type="image/png" href="/img/favicon.png">
-    <link rel="stylesheet" href="/assets/css/app.css?v=2026100802">
-    <link rel="stylesheet" href="/assets/css/icons.css?v=2026100802">
+    <link rel="stylesheet" href="<?= aset('css/app.css') ?>">
+    <link rel="stylesheet" href="<?= aset('css/icons.css') ?>">
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family:var(--font-sans); min-height:100vh; overflow:hidden; }
+        body { font-family:var(--font-sans); min-height:100vh; overflow-x:hidden; overflow-y:auto; }
 
         /* BCD Background — CSS waves sama seperti main.php tapi dark */
         .login-bg {
@@ -84,10 +84,16 @@
             <p style="font-size:12px;color:#6b7280;">Koperasi Konsumen Pekerja PT NOK Indonesia</p>
         </div>
 
+        <?php if ($ok = session()->getFlashdata('success')): ?>
+            <div class="error-box" style="background:#ecfdf5;border-color:#a7f3d0;border-left-color:#16a34a;color:#065f46;margin-bottom:12px;">
+                <i class="ti ti-circle-check" style="font-size:18px;flex-shrink:0;"></i>
+                <?= esc($ok) ?>
+            </div>
+        <?php endif; ?>
         <?php if (session()->getFlashdata('error')): ?>
             <div class="error-box" id="login-error">
                 <i class="ti ti-alert-triangle" style="font-size:18px;flex-shrink:0;"></i>
-                <?= esc(session()->getFlashdata('error')) ?>
+                <span><?= esc(session()->getFlashdata('error')) ?></span>
             </div>
         <?php else: ?>
             <div class="error-box" id="login-error" style="display:none;">
@@ -96,7 +102,7 @@
             </div>
         <?php endif; ?>
 
-        <form id="login-form">
+        <form id="login-form" method="post" action="/login">
             <?= csrf_field() ?>
             <div style="margin-bottom:6px;">
                 <label style="font-size:13px;font-weight:600;color:#022760;display:block;margin-bottom:6px;">Username</label>
@@ -110,12 +116,8 @@
                 <div class="input-wrap" style="margin-bottom:4px;">
                     <i class="ti ti-lock input-icon"></i>
                     <input type="password" name="password" id="pwd-login" class="login-input" placeholder="Masukkan password" required>
-                    <button type="button" class="eye-btn"
-                        onmousedown="document.getElementById('pwd-login').type='text'"
-                        onmouseup="document.getElementById('pwd-login').type='password'"
-                        onmouseleave="document.getElementById('pwd-login').type='password'">👁️</button>
+                    <button type="button" class="eye-btn" id="lihat-pwd-login" aria-label="Tampilkan password"><i class="ti ti-eye"></i></button>
                 </div>
-                <p style="font-size:11px;color:#9ca3af;text-align:right;margin:0;">Tahan 👁️ untuk melihat password</p>
             </div>
             <button type="submit" class="login-btn" id="login-btn">
                 <i class="ti ti-login" style="margin-right:6px;"></i>
@@ -126,135 +128,6 @@
     </div>
 </div>
 
-<script>
-// ── CSS wave sync ─────────────────────────────────────────────────
-(function() {
-    const t = parseFloat(localStorage.getItem('kpni_bcd_t')||'0') / 1000;
-    const durations = [18, 24, 30];
-    document.querySelectorAll('.login-wave').forEach((el,i) => {
-        el.style.animationDelay = `-${(t % durations[i]).toFixed(2)}s`;
-    });
-    document.querySelectorAll('.login-grid').forEach(el => {
-        el.style.animationDelay = `-${(t % 12).toFixed(2)}s`;
-    });
-    document.querySelectorAll('.login-glow').forEach((el,i) => {
-        el.style.animationDelay = `-${(t % [5,7,6][i]).toFixed(2)}s`;
-    });
-})();
-
-// ── Dots canvas ──────────────────────────────────────────────────
-(function() {
-    const canvas = document.getElementById('login-dots');
-    if (!canvas) return;
-    const dpr = Math.min(window.devicePixelRatio||1, 2);
-    function resize() {
-        canvas.width  = window.innerWidth  * dpr;
-        canvas.height = window.innerHeight * dpr;
-        canvas.style.width  = window.innerWidth  + 'px';
-        canvas.style.height = window.innerHeight + 'px';
-    }
-    resize();
-    window.addEventListener('resize', resize);
-    const ctx = canvas.getContext('2d');
-    const KEY = 'kpni_bcd_t';
-    let t = parseFloat(localStorage.getItem(KEY)||'0');
-    let last = performance.now(), save = 0;
-
-    const dots = Array.from({length:10},(_,i)=>({
-        rx:(i*0.137+0.08)%0.92, ry:(i*0.211+0.12)%0.88,
-        r:2+(i%3), spd:3000+(i%5)*500, ph:(i*0.7)%(Math.PI*2)
-    }));
-    const lines = [[0,2],[2,5],[3,7],[1,4],[6,9]];
-
-    // Ripple canvas
-    const rc  = document.getElementById('ripple-canvas');
-    const rct = rc ? rc.getContext('2d') : null;
-    const DUR = 2500;
-    if(rct) {
-        const dpr2 = Math.min(window.devicePixelRatio||1,2);
-        rc.width  = 220*dpr2; rc.height = 220*dpr2;
-        rc.style.width='220px'; rc.style.height='220px';
-        rct.scale(dpr2,dpr2);
-    }
-
-    function tick(now) {
-        const dt = Math.min(now-last,50); last=now; t+=dt;
-        const W=window.innerWidth, H=window.innerHeight;
-
-        ctx.clearRect(0,0,canvas.width,canvas.height);
-        ctx.save(); ctx.scale(dpr,dpr);
-        lines.forEach(([a,b])=>{
-            const da=dots[a],db=dots[b];
-            const op=((Math.sin((t/4000)*Math.PI*2+(da.ph+db.ph)/2)+1)/2)*0.2;
-            ctx.strokeStyle=`rgba(0,158,224,${op.toFixed(3)})`;
-            ctx.lineWidth=1;
-            ctx.beginPath(); ctx.moveTo(da.rx*W,da.ry*H); ctx.lineTo(db.rx*W,db.ry*H); ctx.stroke();
-        });
-        dots.forEach(d=>{
-            const p=Math.sin((t/d.spd)*Math.PI*2+d.ph);
-            const r=d.r*(1+p*0.8), op=0.2+0.3*((p+1)/2);
-            ctx.fillStyle=`rgba(0,158,224,${op.toFixed(3)})`;
-            ctx.beginPath(); ctx.arc(d.rx*W,d.ry*H,r,0,Math.PI*2); ctx.fill();
-        });
-        ctx.restore();
-
-        // Ripple
-        if(rct) {
-            rct.clearRect(0,0,220,220);
-            [0,DUR/3,DUR/3*2].forEach(phase=>{
-                const p=((t+phase)%DUR)/DUR;
-                const r=65+(105-65)*p;
-                const fin=p<0.2?(p/0.2)**2:1, fout=p>0.6?Math.max(0,1-(p-0.6)/0.4):1;
-                const op=fin*fout*0.65;
-                rct.beginPath(); rct.arc(110,110,r,0,Math.PI*2);
-                rct.strokeStyle=`rgba(9,96,168,${op.toFixed(3)})`; rct.lineWidth=1.5; rct.stroke();
-            });
-        }
-
-        save+=dt;
-        if(save>500){localStorage.setItem(KEY,t.toString());save=0;}
-        requestAnimationFrame(tick);
-    }
-    window.addEventListener('beforeunload',()=>localStorage.setItem(KEY,t.toString()));
-    requestAnimationFrame(tick);
-})();
-
-// ── Login Form ───────────────────────────────────────────────────
-(function() {
-    const form   = document.getElementById('login-form');
-    const btn    = document.getElementById('login-btn');
-    const card   = document.getElementById('login-card');
-    const errBox = document.getElementById('login-error');
-
-    const s = document.createElement('style');
-    s.textContent = '@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}';
-    document.head.appendChild(s);
-
-    form.addEventListener('submit', async function(e) {
-        e.preventDefault();
-        btn.disabled = true;
-        btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin 0.8s linear infinite;margin-right:6px;font-size:16px;"></i>Masuk...';
-        const fd = new FormData(form);
-        try {
-            const res  = await fetch('/login', {method:'POST',body:fd,headers:{'X-Requested-With':'kpni-ajax'}});
-            const data = await res.json();
-            if (!data.ok) {
-                if(errBox){errBox.textContent=data.msg;errBox.style.display='flex';}
-                btn.disabled=false;
-                btn.innerHTML='<i class="ti ti-login" style="margin-right:6px;"></i>Masuk ke Sistem';
-                return;
-            }
-            localStorage.setItem('kpni_last_login', Date.now().toString());
-            sessionStorage.removeItem('kpni_splash_done');
-            if(card){card.style.transition='transform 0.4s cubic-bezier(0.4,0,1,1),opacity 0.35s ease';card.style.transform='scale(0.88) translateY(-16px)';card.style.opacity='0';}
-            setTimeout(()=>{ window.location.href = data.redirect||'/dashboard'; }, 420);
-        } catch(err) {
-            btn.disabled=false;
-            btn.innerHTML='<i class="ti ti-login" style="margin-right:6px;"></i>Masuk ke Sistem';
-            if(errBox){errBox.textContent='Koneksi bermasalah.';errBox.style.display='flex';}
-        }
-    });
-})();
-</script>
+<script src="<?= aset('js/login.js') ?>"></script>
 </body>
 </html>

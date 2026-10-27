@@ -24,17 +24,7 @@ class DashboardController extends BaseController
 
     public function index()
     {
-        $idRat = $this->idRatDipilih();
-
-        // Auto-pilih RAT aktif kalau belum ada yang dipilih
-        if (! $idRat) {
-            $ratAktif = $this->ratModel->getActive();
-            if ($ratAktif) {
-                $idRat = (int) $ratAktif['id'];
-                session()->set('rat_dipilih', $idRat);
-                session()->set('rat_dipilih_label', label_rat($ratAktif));
-            }
-        }
+        $idRat = $this->idRatDipilih(); // otomatis RAT aktif kalau belum memilih
 
         $rat = $idRat ? $this->ratModel->find($idRat) : null;
         if (! $rat) {
@@ -66,6 +56,7 @@ class DashboardController extends BaseController
                 'kuorum'       => $s['kuorum'],
                 'kuorum_capai' => $s['kuorum_capai'],
             ], $data['sesi_data']),
+            'id_rat'       => $idRat,
             'max_hadir'    => $data['max_hadir'],
             'sesi_capai'   => $data['sesi_capai'],
             'sesi_dinilai' => $data['sesi_dinilai'],

@@ -24,8 +24,6 @@ class RatController extends BaseController
 
     public function index()
     {
-        if (session('role') !== 'admin') return redirect()->to('/dashboard');
-
         $daftarRat = $this->ratModel->getAllOrdered();
 
         // Total peserta unik per RAT (satu query)
@@ -42,8 +40,6 @@ class RatController extends BaseController
 
     public function store()
     {
-        if (session('role') !== 'admin') return redirect()->to('/dashboard');
-
         $rules = [
             'nama_rat'   => 'required|min_length[5]|max_length[150]',
             'tahun_buku' => 'required|is_natural_no_zero|exact_length[4]',
@@ -94,8 +90,6 @@ class RatController extends BaseController
 
     public function pilih(int $idRat)
     {
-        if (session('role') !== 'admin') return redirect()->to('/dashboard');
-
         $rat = $this->ratModel->find($idRat);
         if (!$rat) {
             return redirect()->back()->with('error', 'Data RAT tidak ditemukan.');
@@ -112,8 +106,6 @@ class RatController extends BaseController
 
     public function selesaikan(int $idRat)
     {
-        if (session('role') !== 'admin') return redirect()->to('/dashboard');
-
         $rat = $this->ratModel->find($idRat);
         if (!$rat) return redirect()->to('/rat')->with('error', 'RAT tidak ditemukan.');
 
@@ -123,24 +115,56 @@ class RatController extends BaseController
         return redirect()->to('/rat')->with('success', "{$rat['nama_rat']} telah ditandai selesai.");
     }
 
-    public function hapus(int $idRat)
+    /**
+     * Aktifkan kembali RAT yang terlanjur ditandai selesai (RAT aktif lain jadi selesai).
+     */
+    public function aktifkan(int $idRat)
     {
-        if (session('role') !== 'admin') return redirect()->to('/dashboard');
-
         $rat = $this->ratModel->find($idRat);
-        if (!$rat) return redirect()->to('/rat')->with('error', 'RAT tidak ditemukan.');
+        if (! $rat) return redirect()->to('/rat')->with('error', 'RAT tidak ditemukan.');
 
-        // Hapus session jika RAT yang dihapus adalah yang sedang dipilih
-        if (session()->get('rat_dipilih') == $idRat) {
-            session()->remove('rat_dipilih');
-            session()->remove('rat_dipilih_label');
-        }
+        $this->ratModel->where('status', 'aktif')->where('id !=', $idRat)->set(['status' => 'selesai'])->update();
+        $this->ratModel->update($idRat, ['status' => 'aktif']);
+        session()->set(['rat_dipilih' => $idRat, 'rat_dipilih_label' => label_rat($rat)]);
+        $this->catatLog("Aktifkan kembali RAT: {$rat['nama_rat']} ({$rat['tahun_buku']})");
 
-        $this->ratModel->delete($idRat);
-        $this->catatLog("Hapus RAT: {$rat['nama_rat']} ({$rat['tahun_buku']})");
-
-        return redirect()->to('/rat')
-            ->with('success', "RAT {$rat['nama_rat']} dan semua data terkait telah dihapus.");
+        return redirect()->to('/rat')->with('success', "{$rat['nama_rat']} aktif kembali.");
     }
 
+    public function hapus(int $idRat)
+    {
+        $rat = $this->ratModel->find($idRat);
+        if (! $rat) return redirect()->to('/rat')->with('error', 'RAT tidak ditemukan.');
+
+        // RAT yang sudah punya data kehadiran tidak boleh dihapus (sesi & absensi ikut terhapus karena FK cascade)
+        $jumlahAbsen = (int) (db_connect()->query(
+            'SELECT COUNT(*) n FROM tb_absensi ab JOIN tb_sesi s ON s.id = ab.id_sesi WHERE s.id_rat = ?',
+            [$idRat]
+        )->getRowArray()['n'] ?? 0);
+        if ($jumlahAbsen > 0) {
+            return redirect()->to('/rat')->with('error', "{$rat['nama_rat']} sudah memiliki {$jumlahAbsen} data kehadiran dan tidak bisa dihapus. Tandai selesai saja.");
+        }
+
+        $db = db_connect();
+        $db->transStart();
+        // Doorprize tidak punya FK ke tb_rat, jadi dibersihkan manual (beserta file gambarnya)
+        $gambar = array_column($db->table('tb_doorprize_items')->select('gambar_path')->where('id_rat', $idRat)->get()->getResultArray(), 'gambar_path');
+        $db->table('tb_doorprize_winners')->where('id_rat', $idRat)->delete();
+        $db->table('tb_doorprize_items')->where('id_rat', $idRat)->delete();
+        $this->ratModel->delete($idRat); // sesi & peserta ikut terhapus (FK cascade)
+        $db->transComplete();
+
+        if (! $db->transStatus()) {
+            return redirect()->to('/rat')->with('error', 'RAT gagal dihapus.');
+        }
+        foreach ($gambar as $g) {
+            if ($g && str_starts_with($g, 'uploads/doorprize/') && is_file(FCPATH . $g)) unlink(FCPATH . $g);
+        }
+        if ((int) session()->get('rat_dipilih') === $idRat) {
+            session()->remove(['rat_dipilih', 'rat_dipilih_label']);
+        }
+        $this->catatLog("Hapus RAT: {$rat['nama_rat']} ({$rat['tahun_buku']})");
+
+        return redirect()->to('/rat')->with('success', "{$rat['nama_rat']} dan data terkaitnya telah dihapus.");
+    }
 }

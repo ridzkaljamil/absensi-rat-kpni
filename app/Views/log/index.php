@@ -5,7 +5,7 @@
     <div class="page-header">
         <div>
             <h1 class="page-title">Log Aktivitas</h1>
-            <p class="page-subtitle">Riwayat semua aksi penting yang dilakukan Admin</p>
+            <p class="page-subtitle">Riwayat aksi penting yang dilakukan Admin dan operator</p>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <form action="/log" method="get" style="display:flex;gap:6px;align-items:center;">
@@ -37,7 +37,7 @@
             </div>
         <?php else: ?>
             <table class="data-table">
-                <thead><tr><th style="width:160px;">Waktu</th><th style="width:180px;">Admin</th><th>Aktivitas</th></tr></thead>
+                <thead><tr><th style="width:160px;">Waktu</th><th style="width:180px;">Pengguna</th><th>Aktivitas</th></tr></thead>
                 <tbody>
                     <?php foreach ($daftarLog as $log): ?>
                     <tr>
@@ -46,8 +46,8 @@
                             <strong><?= esc(date('H:i:s', strtotime($log['waktu']))) ?></strong> WIB
                         </td>
                         <td>
-                            <div style="font-size:13px;font-weight:600;color:#022760;"><?= esc($log['nama_lengkap']) ?></div>
-                            <div style="font-size:11px;color:#6b7280;"><?= esc($log['username']) ?></div>
+                            <div style="font-size:13px;font-weight:600;color:#022760;"><?= esc($log['nama_lengkap'] ?? '(akun dihapus)') ?></div>
+                            <div style="font-size:11px;color:#6b7280;"><?= esc($log['username'] ?? '-') ?></div>
                         </td>
                         <td style="font-size:13px;"><?= esc($log['aksi']) ?></td>
                     </tr>

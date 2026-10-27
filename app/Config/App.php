@@ -199,4 +199,21 @@ class App extends BaseConfig
      * @see http://www.w3.org/TR/CSP/
      */
     public bool $CSPEnabled = false;
+
+    /**
+     * Aplikasi dipakai di jaringan lokal (WiFi) dari beberapa laptop/HP.
+     * Kalau app.baseURL tidak diisi di .env, alamat diambil dari alamat yang
+     * dibuka di browser (mis. http://192.168.1.10:8080/), supaya redirect
+     * tidak lari ke "localhost" saat diakses dari perangkat lain.
+     */
+    public function __construct()
+    {
+        parent::__construct();
+
+        $host = $_SERVER['HTTP_HOST'] ?? '';
+        if (env('app.baseURL') === null && $host !== '' && preg_match('/^[A-Za-z0-9.\-]+(:\d{1,5})?$/', $host)) {
+            $https         = ! empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off';
+            $this->baseURL = ($https ? 'https' : 'http') . '://' . $host . '/';
+        }
+    }
 }

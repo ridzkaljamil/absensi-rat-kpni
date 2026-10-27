@@ -3,6 +3,7 @@
 <?php
     $labelAktif = label_sesi($sesiAktif['nama_sesi']);
     $labelSblm  = $sesiSebelumnya ? label_sesi($sesiSebelumnya['nama_sesi']) : '';
+    $terkunci   = $sesiAktif['status'] === 'terkunci';
 ?>
 <div class="max-w-6xl mx-auto px-5 py-8 page-enter">
     <div class="page-header">
@@ -11,13 +12,15 @@
             <p class="page-subtitle"><?= esc($rat['nama_rat']) ?> · daftar peserta dicatat per sesi</p>
         </div>
         <div class="page-actions">
+            <?php if (! $terkunci): ?>
             <button type="button" onclick="bukaModal('modal-import')" class="btn btn-primary btn-sm"><i class="ti ti-upload"></i> Import</button>
             <button type="button" onclick="bukaModal('modal-tambah')" class="btn btn-edit btn-sm"><i class="ti ti-plus"></i> Tambah</button>
+            <?php endif; ?>
             <a href="/peserta-rat/bulk-rfid" class="btn btn-teal btn-sm"><i class="ti ti-nfc"></i> RFID Massal</a>
             <a href="/peserta-rat/export?sesi=<?= $idSesi ?>" class="btn btn-amber btn-sm"><i class="ti ti-download"></i> Excel</a>
-            <?php if ($total > 0): ?>
+            <?php if ($total > 0 && ! $terkunci): ?>
                 <button type="button" title="Hapus semua peserta <?= esc($labelAktif) ?>" class="btn btn-danger btn-sm"
-                    onclick="showModal({title:'Hapus semua peserta <?= esc($labelAktif, 'js') ?>?',message:'<?= $total ?> peserta di sesi ini akan dihapus. Data absensi tidak ikut terhapus.',confirmText:'Hapus Semua',type:'danger',onConfirm:()=>document.getElementById('form-hapus-semua').submit()})"><i class="ti ti-trash"></i></button>
+                    onclick="showModal({title:'Hapus semua peserta <?= esc($labelAktif, 'js') ?>?',message:'<?= $total ?> peserta di sesi ini akan dihapus dari daftar. Kehadiran yang sudah tercatat tidak dihitung lagi, kecuali orangnya didaftarkan ulang.',confirmText:'Hapus Semua',type:'danger',onConfirm:()=>document.getElementById('form-hapus-semua').submit()})"><i class="ti ti-trash"></i></button>
                 <form id="form-hapus-semua" action="/peserta-rat/hapus-semua" method="post" style="display:none;"><?= csrf_field() ?><input type="hidden" name="id_sesi" value="<?= $idSesi ?>"></form>
             <?php endif; ?>
         </div>
@@ -42,11 +45,17 @@
         </div>
     </div>
 
+    <?php if ($terkunci): ?>
+    <div class="card p-4 mb-4" style="border-left:4px solid #C9920F;background:#fffbeb;color:#92650A;font-size:13px;">
+        <i class="ti ti-lock"></i> <?= esc($labelAktif) ?> sudah dikunci, daftar pesertanya dibekukan supaya angka kuorum tidak berubah. Buka kunci di <a href="/sesi" style="color:#0960A8;font-weight:600;">Kelola Sesi</a> kalau perlu mengubahnya.
+    </div>
+    <?php endif; ?>
+
     <?php if ($sesiSebelumnya): ?>
         <form id="form-salin" action="/peserta-rat/salin-kehadiran" method="post" style="display:none;"><?= csrf_field() ?><input type="hidden" name="id_sesi" value="<?= $idSesi ?>"></form>
     <?php endif; ?>
 
-    <?php if ($total === 0): ?>
+    <?php if ($total === 0 && ! $terkunci): ?>
         <!-- Sesi belum punya peserta -->
         <div class="card p-6 mb-4" style="border-left:4px solid #C9920F;">
             <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;">
@@ -59,7 +68,7 @@
                     </p>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         <?php if ($sesiSebelumnya && $hadirSebelumnya > 0): ?>
-                            <button type="button" class="btn btn-indigo btn-sm" onclick="document.getElementById('form-salin').submit()"><i class="ti ti-copy"></i> Salin <?= $hadirSebelumnya ?> orang yang hadir di <?= esc($labelSblm) ?></button>
+                            <button type="button" class="btn btn-indigo btn-sm" onclick="<?php if ($sesiSebelumnya['status'] !== 'terkunci'): ?>showModal({title:'<?= esc($labelSblm, 'js') ?> belum dikunci',message:'Yang absen di <?= esc($labelSblm, 'js') ?> setelah ini tidak ikut tersalin. Sebaiknya kunci sesi itu dulu. Tetap salin sekarang?',confirmText:'Tetap Salin',type:'warning',onConfirm:()=>document.getElementById('form-salin').submit()})<?php else: ?>document.getElementById('form-salin').submit()<?php endif; ?>"><i class="ti ti-copy"></i> Salin <?= $hadirSebelumnya ?> orang yang hadir di <?= esc($labelSblm) ?></button>
                         <?php elseif ($sesiSebelumnya): ?>
                             <span class="badge badge-warning" style="height:30px;">Belum ada yang absen di <?= esc($labelSblm) ?></span>
                         <?php endif; ?>
@@ -132,9 +141,11 @@
                                 <?php endif; ?>
                             </td>
                             <td style="text-align:center;">
+                                <?php if (! $terkunci): ?>
                                 <button type="button" title="Hapus dari sesi ini" class="btn btn-danger btn-sm" style="height:26px;padding:0 8px;"
                                     onclick="showModal({title:'Hapus peserta?',message:'<?= esc($p['nama'], 'js') ?> akan dihapus dari daftar peserta <?= esc($labelAktif, 'js') ?>.',confirmText:'Hapus',type:'danger',onConfirm:()=>document.getElementById('fh-<?= (int) $p['id'] ?>').submit()})"><i class="ti ti-trash" style="font-size:12px;"></i></button>
                                 <form id="fh-<?= (int) $p['id'] ?>" action="/peserta-rat/<?= (int) $p['id'] ?>/hapus" method="post" style="display:none;"><?= csrf_field() ?></form>
+                                <?php else: ?><i class="ti ti-lock" style="color:#9ca3af;" title="Sesi terkunci"></i><?php endif; ?>
                             </td>
                         </tr>
                     <?php endforeach; endif; ?>
@@ -174,19 +185,27 @@
     <div class="modal-box" style="max-width:480px;">
         <div class="modal-head">
             <span class="modal-head-icon"><i class="ti ti-user-plus"></i></span>
-            <div><h3>Tambah Peserta <?= esc($labelAktif) ?></h3><p>Ketik NIP — nama dan departemen terisi otomatis dari data induk.</p></div>
+            <div><h3>Tambah Peserta <?= esc($labelAktif) ?></h3><p>Ketik NIP — nama, departemen, dan kartu RFID yang sudah terdaftar terisi otomatis.</p></div>
         </div>
         <form method="POST" action="/peserta-rat/store">
             <?= csrf_field() ?>
             <input type="hidden" name="id_sesi" value="<?= $idSesi ?>">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-                <div><label class="form-label">NIP *</label><input type="text" name="nip" required maxlength="10" class="input-field" inputmode="numeric"></div>
-                <div><label class="form-label">Shift</label><select name="shift" class="input-field"><option value="">—</option><option>A</option><option>B</option><option>N</option></select></div>
+                <div><label class="form-label">NIP *</label><input type="text" name="nip" required maxlength="10" class="input-field" inputmode="numeric" value="<?= esc(old('nip')) ?>"></div>
+                <div><label class="form-label">Shift</label><select name="shift" class="input-field"><option value="">—</option><?php foreach (['A', 'B', 'N'] as $sh): ?><option<?= old('shift') === $sh ? ' selected' : '' ?>><?= $sh ?></option><?php endforeach; ?></select></div>
             </div>
-            <div style="margin-bottom:12px;"><label class="form-label">Nama *</label><input type="text" name="nama" required class="input-field"></div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                <div><label class="form-label">Departemen</label><select name="departemen" class="input-field"><option value="">—</option><?php foreach ($deptList as $d): ?><option><?= esc($d) ?></option><?php endforeach; ?></select></div>
-                <div><label class="form-label">Section</label><select name="section" class="input-field"><option value="">—</option><?php foreach ($sectionList as $sc): ?><option><?= esc($sc) ?></option><?php endforeach; ?></select></div>
+            <div style="margin-bottom:12px;"><label class="form-label">Nama *</label><input type="text" name="nama" required class="input-field" value="<?= esc(old('nama')) ?>"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                <div><label class="form-label">Departemen</label><select name="departemen" class="input-field"><option value="">—</option><?php foreach ($deptList as $d): ?><option<?= old('departemen') === $d ? ' selected' : '' ?>><?= esc($d) ?></option><?php endforeach; ?></select></div>
+                <div><label class="form-label">Section</label><select name="section" class="input-field"><option value="">—</option><?php foreach ($sectionList as $sc): ?><option<?= old('section') === $sc ? ' selected' : '' ?>><?= esc($sc) ?></option><?php endforeach; ?></select></div>
+            </div>
+            <div>
+                <label class="form-label">RFID</label>
+                <div style="position:relative;">
+                    <i class="ti ti-nfc" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:17px;pointer-events:none;"></i>
+                    <input type="text" name="uid_rfid" id="tambah-rfid" class="input-field" style="padding-left:38px;" placeholder="Klik di sini lalu tap kartu (opsional)" autocomplete="off" value="<?= esc(old('uid_rfid')) ?>">
+                </div>
+                <p id="tambah-rfid-info" style="font-size:12px;color:#6b7280;margin:6px 0 0;">Boleh dikosongkan dan didaftarkan nanti. Kartu berlaku untuk semua sesi RAT ini.</p>
             </div>
             <div class="modal-foot">
                 <button type="button" onclick="tutupModal('modal-tambah')" class="btn btn-ghost">Batal</button>
@@ -236,48 +255,6 @@
     .modal-foot { display:flex;gap:10px;justify-content:flex-end;margin-top:16px; }
 </style>
 
-<script>
-var MODAL_IDS = ['modal-import', 'modal-tambah', 'modal-rfid'];
-function bukaModal(id) { document.getElementById(id).style.display = 'flex'; }
-function tutupModal(id) { document.getElementById(id).style.display = 'none'; }
-function bukaRfid(pid, nama) {
-    document.getElementById('rfid-nama').textContent = 'Peserta: ' + nama;
-    document.getElementById('form-rfid').action = '/peserta-rat/' + pid + '/rfid';
-    document.getElementById('input-rfid').value = '';
-    bukaModal('modal-rfid');
-    setTimeout(function () { document.getElementById('input-rfid').focus(); }, 100);
-}
-document.addEventListener('keydown', function (e) { if (e.key === 'Escape') MODAL_IDS.forEach(tutupModal); });
-// Modal dipindah ke <body> supaya position:fixed tidak terganggu backdrop-filter parent
-document.addEventListener('DOMContentLoaded', function () {
-    MODAL_IDS.forEach(function (id) { var el = document.getElementById(id); if (el) document.body.appendChild(el); });
-});
-// Isi otomatis dari data induk saat NIP diketik
-(function () {
-    var ni = document.querySelector('#modal-tambah input[name="nip"]');
-    if (!ni) return;
-    var t = null;
-    ni.addEventListener('input', function () {
-        clearTimeout(t);
-        var nip = this.value.trim();
-        if (nip.length < 4) return;
-        t = setTimeout(function () {
-            fetch('/peserta-rat/lookup-nip?nip=' + encodeURIComponent(nip))
-                .then(function (r) { return r.json(); })
-                .then(function (d) {
-                    if (!d.found) return;
-                    var n = document.querySelector('#modal-tambah input[name="nama"]');
-                    if (n && !n.value) n.value = d.nama;
-                    ['departemen', 'section', 'shift'].forEach(function (f) {
-                        var el = document.querySelector('#modal-tambah [name="' + f + '"]');
-                        if (!el || !d[f]) return;
-                        if (el.tagName === 'SELECT') {
-                            for (var i = 0; i < el.options.length; i++) { if (el.options[i].value === d[f]) { el.selectedIndex = i; break; } }
-                        } else if (!el.value) { el.value = d[f]; }
-                    });
-                }).catch(function () {});
-        }, 300);
-    });
-})();
-</script>
+<script>window.KP_PAGE = <?= json_encode(['bukaTambah' => old('nip') !== null], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
+<script src="<?= aset('js/peserta.js') ?>"></script>
 <?= $this->endSection() ?>

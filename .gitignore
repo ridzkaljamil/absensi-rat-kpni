@@ -147,3 +147,4 @@ _modules/*
 
 # Script bersih-bersih lokal
 *.bat
+!/Jalankan Aplikasi.bat

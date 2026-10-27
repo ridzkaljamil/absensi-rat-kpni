@@ -16,7 +16,8 @@ class UserController extends BaseController
     public function index()
     {
         return view('users/index', [
-            'daftarUser' => $this->userModel->orderBy('role','ASC')->orderBy('nama_lengkap','ASC')->findAll(),
+            // Hash password tidak ikut dikirim ke view
+            'daftarUser' => $this->userModel->select('id, username, role, nama_lengkap')->orderBy('role', 'ASC')->orderBy('nama_lengkap', 'ASC')->findAll(),
         ]);
     }
 

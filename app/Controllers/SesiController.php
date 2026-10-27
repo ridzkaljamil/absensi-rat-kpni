@@ -24,13 +24,16 @@ class SesiController extends BaseController
         }
 
         $daftarSesi = $this->sesiModel->getByRat($idRat);
-        $absensi    = (new \App\Models\AbsensiModel())->hitungPerSesi(array_column($daftarSesi, 'id'));
+        $absensiM   = new \App\Models\AbsensiModel();
+        $absensi    = $absensiM->hitungPerSesi(array_column($daftarSesi, 'id'));
+        $tercatat   = $absensiM->hitungTercatatPerSesi(array_column($daftarSesi, 'id'));
         $peserta    = (new \App\Models\PesertaRatModel())->hitungPerSesi($idRat);
 
         return view('sesi/index', [
             'rat'        => $this->ratModel->find($idRat),
             'daftarSesi' => $daftarSesi,
             'jmlAbsensi' => $absensi,
+            'jmlTercatat' => $tercatat,
             'jmlPeserta' => $peserta,
         ]);
     }
@@ -143,12 +146,6 @@ class SesiController extends BaseController
 
     // ─────────────────────────────────────────────
 
-    private function sesiMilikRat(int $id): ?array
-    {
-        $sesi = $this->sesiModel->find($id);
-
-        return ($sesi && (int) $sesi['id_rat'] === $this->idRatDipilih()) ? $sesi : null;
-    }
 
     /**
      * Ambil & validasi jam mulai/selesai format 24 jam (HH:MM).

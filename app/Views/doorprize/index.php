@@ -1,12 +1,11 @@
 <?= $this->extend('layouts/main') ?>
 <?= $this->section('content') ?>
-
 <div class="max-w-6xl mx-auto px-5 py-8 page-enter">
 
     <div class="page-header">
         <div>
             <h1 class="page-title">Doorprize</h1>
-            <p class="page-subtitle"><?= esc($rat['nama_rat']) ?> · <?= $totalEligible ?> peserta eligible dari <?= $totalPeserta ?> peserta RAT</p>
+            <p class="page-subtitle"><?= esc($rat['nama_rat']) ?> · <span id="sub-eligible"><?= $totalEligible ?></span> peserta eligible belum menang · <?= $totalPeserta ?> peserta RAT</p>
         </div>
     </div>
 
@@ -29,13 +28,12 @@
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px;">
             <?php foreach ($items as $item): ?>
             <div class="card p-4 card-hover">
-                <?php if ($item['gambar_path']): ?>
-                    <img src="/<?= esc($item['gambar_path']) ?>" alt="" style="width:100%;height:140px;object-fit:cover;border-radius:10px;margin-bottom:12px;">
-                <?php else: ?>
-                    <div style="width:100%;height:140px;background:#E8F4FD;border-radius:10px;margin-bottom:12px;display:flex;align-items:center;justify-content:center;">
-                        <i class="ti ti-gift" style="font-size:40px;color:#0960A8;opacity:0.4;"></i>
-                    </div>
-                <?php endif; ?>
+                <div style="position:relative;width:100%;height:140px;background:#E8F4FD;border-radius:10px;margin-bottom:12px;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+                    <i class="ti ti-gift" style="font-size:40px;color:#0960A8;opacity:0.4;"></i>
+                    <?php if ($item['gambar_path']): ?>
+                    <img src="/<?= esc($item['gambar_path']) ?>" alt="" loading="lazy" onerror="this.remove()" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">
+                    <?php endif; ?>
+                </div>
                 <div style="font-size:15px;font-weight:700;color:#022760;margin-bottom:4px;"><?= esc($item['nama_barang']) ?></div>
                 <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
                     <span class="badge <?= $item['kategori']==='utama' ? 'badge-active' : 'badge-info' ?>"><?= ucfirst($item['kategori']) ?></span>
@@ -43,7 +41,7 @@
                 </div>
                 <div style="display:flex;gap:6px;">
                     <button onclick="openEditBarang(<?= htmlspecialchars(json_encode($item)) ?>)" class="btn btn-edit btn-sm" style="flex:1;"><i class="ti ti-edit"></i> Edit</button>
-                    <button onclick="showModal({title:'Hapus Barang?',message:'<?= esc(addslashes($item['nama_barang'])) ?> akan dihapus.',confirmText:'Hapus',type:'danger',onConfirm:()=>document.getElementById('fhi-<?= $item['id'] ?>').submit()})" class="btn btn-danger btn-sm" style="flex:1;"><i class="ti ti-trash"></i> Hapus</button>
+                    <button onclick="showModal({title:'Hapus Barang?',message:'<?= esc($item['nama_barang'], 'js') ?> akan dihapus.',confirmText:'Hapus',type:'danger',onConfirm:()=>document.getElementById('fhi-<?= $item['id'] ?>').submit()})" class="btn btn-danger btn-sm" style="flex:1;"><i class="ti ti-trash"></i> Hapus</button>
                 </div>
                 <form id="fhi-<?= $item['id'] ?>" action="/doorprize/item/<?= $item['id'] ?>/hapus" method="post" style="display:none;"><?= csrf_field() ?></form>
             </div>
@@ -55,9 +53,21 @@
     <!-- ═══ TAB ELIGIBLE ═══ -->
     <div id="sec-eligible" class="tab-section" style="display:none;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-            <h2 style="font-size:16px;font-weight:700;color:#022760;margin:0;">Peserta Eligible Doorprize <span style="font-weight:400;color:#6b7280;font-size:13px;">— wajib hadir di seluruh <?= count($daftarSesi) ?> sesi</span></h2>
-            <span style="font-size:13px;color:#0960A8;font-weight:600;"><?= $totalEligible ?> eligible</span>
+            <h2 style="font-size:16px;font-weight:700;color:#022760;margin:0;">Peserta Eligible Doorprize <span style="font-weight:400;color:#6b7280;font-size:13px;">— wajib hadir di seluruh <?= count($daftarSesi) ?> sesi yang dipakai</span></h2>
+            <span id="elig-jumlah" style="font-size:13px;color:#0960A8;font-weight:600;"><?= $totalEligible ?> eligible</span>
         </div>
+
+        <?php if (! empty($daftarSesi)): ?>
+        <p style="font-size:12px;color:#6b7280;margin:-8px 0 12px;">Sesi yang dihitung: <?= esc(implode(' · ', array_map(static fn ($s) => label_sesi($s['nama_sesi']) . ' (' . (int) $s['jumlah_peserta'] . ' peserta)', $daftarSesi))) ?>. Kalau ada sesi dengan peserta sangat sedikit padahal tidak dipakai, kosongkan daftar pesertanya supaya tidak mengurangi peserta eligible.</p>
+        <?php endif; ?>
+        <?php if ($sesiKosong > 0): ?>
+        <div class="card p-4 mb-4" style="border-left:4px solid #0960A8;font-size:13px;color:#064687;">
+            <i class="ti ti-info-circle"></i> <?= $sesiKosong ?> sesi belum punya daftar peserta sehingga tidak dihitung. Kalau sesi itu memang dipakai, isi dulu daftar pesertanya sebelum mengundi.
+        </div>
+        <?php endif; ?>
+        <?php if (empty($daftarSesi)): ?>
+        <div class="card p-4 mb-4" style="border-left:4px solid #C9920F;font-size:13px;color:#92650A;"><i class="ti ti-alert-triangle"></i> Belum ada sesi yang punya daftar peserta.</div>
+        <?php endif; ?>
 
         <!-- Filter card -->
         <div class="card p-4 mb-4">
@@ -75,13 +85,13 @@
             <div style="overflow-x:auto;">
             <table class="data-table" id="tabel-eligible">
                 <thead><tr><th style="width:45px;">No</th><th style="width:90px;">NIP</th><th>Nama</th><th>Departemen</th><th>Section</th><th style="text-align:center;width:60px;">Shift</th>
-                    <?php foreach ($daftarSesi as $s): ?><th style="text-align:center;width:70px;"><?= esc($s['nama_sesi']) ?></th><?php endforeach; ?>
+                    <?php foreach ($daftarSesi as $s): ?><th style="text-align:center;width:70px;"><?= esc(label_sesi($s['nama_sesi'])) ?></th><?php endforeach; ?>
                     <th style="text-align:center;width:80px;">Status</th></tr></thead>
                 <tbody>
                     <?php if (empty($eligible)): ?>
                         <tr><td colspan="<?= 7 + count($daftarSesi) ?>" style="text-align:center;padding:40px;color:#6b7280;">Belum ada peserta eligible.</td></tr>
                     <?php else: foreach ($eligible as $i => $e): ?>
-                    <tr class="elig-row" data-dept="<?= esc($e['departemen'] ?? '') ?>" data-sect="<?= esc($e['section'] ?? '') ?>" data-shift="<?= esc($e['shift'] ?? '') ?>" style="<?= $e['sudah_menang'] ? 'opacity:0.5;' : '' ?>">
+                    <tr class="elig-row" data-nip="<?= esc($e['nip']) ?>" data-dept="<?= esc($e['departemen'] ?? '') ?>" data-sect="<?= esc($e['section'] ?? '') ?>" data-shift="<?= esc($e['shift'] ?? '') ?>" style="<?= $e['status_menang'] ? 'opacity:0.5;' : '' ?>">
                         <td class="elig-no" style="color:#9ca3af;font-size:12px;"><?= $i + 1 ?></td>
                         <td style="font-family:var(--font-mono);font-weight:600;color:#0960A8;"><?= esc($e['nip']) ?></td>
                         <td style="font-weight:500;"><?= esc($e['nama']) ?></td>
@@ -91,7 +101,7 @@
                         <?php foreach ($daftarSesi as $s): ?>
                         <td style="text-align:center;"><?= ($e['hadir_'.$s['id']] ?? false) ? '<span style="color:#16a34a;font-weight:700;">✓</span>' : '<span style="color:#d1d5db;">—</span>' ?></td>
                         <?php endforeach; ?>
-                        <td style="text-align:center;"><?= $e['sudah_menang'] ? '<span class="badge badge-warning">🏆 Menang</span>' : '<span class="badge badge-success">Eligible</span>' ?></td>
+                        <td style="text-align:center;" class="elig-status"><?= $e['status_menang'] === 'menang' ? '<span class="badge badge-warning">🏆 Menang</span>' : ($e['status_menang'] === 'hangus' ? '<span class="badge badge-locked">Hangus</span>' : '<span class="badge badge-success">Eligible</span>') ?></td>
                     </tr>
                     <?php endforeach; endif; ?>
                 </tbody>
@@ -148,12 +158,13 @@
             <div class="picker-side">
                 <div class="picker-stats">
                     <div class="pstat"><div class="pstat-num" id="pstat-eligible"><?= $totalEligible ?></div><div class="pstat-lbl">Eligible belum menang</div></div>
-                    <div class="pstat"><div class="pstat-num"><?= count($winners) ?></div><div class="pstat-lbl">Sudah menang</div></div>
-                    <div class="pstat"><div class="pstat-num"><?= $totalSisaUnit ?></div><div class="pstat-lbl">Unit belum diundi</div></div>
+                    <div class="pstat"><div class="pstat-num" id="pstat-menang"><?= $totalMenang ?></div><div class="pstat-lbl">Sudah menang</div></div>
+                    <div class="pstat"><div class="pstat-num" id="pstat-unit"><?= $totalSisaUnit ?></div><div class="pstat-lbl">Unit belum diundi</div></div>
                 </div>
 
                 <div class="card prize-list-card">
-                    <div class="prize-list-head">Pilih Hadiah <span><?= count($sisaItems) ?> barang</span></div>
+                    <div class="prize-list-head">Pilih Hadiah <span id="jumlah-barang-sisa"><?= count($sisaItems) ?> barang</span></div>
+                    <div id="prize-list-wrap">
                     <?php if (empty($sisaItems)): ?>
                         <div class="prize-empty">
                             <i class="ti ti-gift-off"></i>
@@ -177,7 +188,7 @@
                                         <span class="prize-name"><?= esc($item['nama_barang']) ?></span>
                                         <span class="prize-sub">
                                             <span class="badge <?= ($item['kategori'] ?? 'utama') === 'utama' ? 'badge-active' : 'badge-info' ?>" style="padding:1px 8px;font-size:10px;"><?= esc(ucfirst($item['kategori'] ?? 'utama')) ?></span>
-                                            sisa <?= (int) $item['sisa'] ?> dari <?= (int) $item['jumlah'] ?>
+                                            <span class="prize-sisa">sisa <?= (int) $item['sisa'] ?> dari <?= (int) $item['jumlah'] ?></span>
                                         </span>
                                     </span>
                                     <i class="ti ti-chevron-right prize-arrow"></i>
@@ -185,6 +196,7 @@
                             <?php endforeach; ?>
                         </div>
                     <?php endif; ?>
+                    </div>
                 </div>
             </div>
         </div>
@@ -192,31 +204,31 @@
         <!-- Riwayat Pemenang -->
         <div class="card" style="overflow:hidden;margin-top:20px;">
             <div style="padding:14px 20px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-                <span style="font-size:14px;font-weight:700;color:#022760;">Riwayat Pemenang <span style="font-weight:500;color:#6b7280;font-size:12px;">(<?= count($winners) ?>)</span></span>
-                <?php if (!empty($winners)): ?>
+                <span style="font-size:14px;font-weight:700;color:#022760;">Riwayat Pemenang <span style="font-weight:500;color:#6b7280;font-size:12px;">(<span id="jumlah-riwayat"><?= count($winners) ?></span>)</span></span>
+                <?php if (true): ?>
                 <a href="/doorprize/export-winners" class="btn btn-amber btn-sm"><i class="ti ti-download"></i> Export Excel</a>
                 <?php endif; ?>
             </div>
             <div class="table-scroll">
             <table class="data-table">
                 <thead><tr><th style="width:44px;">No</th><th>Barang</th><th>Kategori</th><th>NIP</th><th>Pemenang</th><th>Departemen</th><th>Section</th><th>Waktu</th><th style="text-align:center;">Aksi</th></tr></thead>
-                <tbody>
+                <tbody id="tbody-pemenang">
                     <?php if (empty($winners)): ?>
-                        <tr><td colspan="9" style="text-align:center;padding:32px;color:#6b7280;">Belum ada pemenang.</td></tr>
+                        <tr id="pemenang-kosong"><td colspan="9" style="text-align:center;padding:32px;color:#6b7280;">Belum ada pemenang.</td></tr>
                     <?php else: ?>
                         <?php foreach ($winners as $i => $w): ?>
-                        <tr>
+                        <tr data-id="<?= (int) $w['id'] ?>" style="<?= $w['hangus'] ? 'opacity:.55;' : '' ?>">
                             <td style="color:#9ca3af;"><?= $i+1 ?></td>
-                            <td style="font-weight:600;color:#022760;"><?= esc($w['nama_barang']) ?></td>
-                            <td><span class="badge <?= $w['kategori']==='utama' ? 'badge-active' : 'badge-info' ?>"><?= esc(ucfirst($w['kategori'])) ?></span></td>
+                            <td style="font-weight:600;color:#022760;"><?= esc($w['nama_barang'] ?? '(barang dihapus)') ?></td>
+                            <td><span class="badge <?= ($w['kategori'] ?? '') === 'utama' ? 'badge-active' : 'badge-info' ?>"><?= esc(ucfirst($w['kategori'] ?? '-')) ?></span></td>
                             <td style="font-family:var(--font-mono);color:#0960A8;"><?= esc($w['nip']) ?></td>
-                            <td style="font-weight:500;"><?= esc($w['nama']) ?></td>
+                            <td class="nama-pemenang" style="font-weight:500;"><?= esc($w['nama']) ?><?= $w['hangus'] ? ' <span class="badge badge-locked" style="font-size:10px;">Hangus</span>' : '' ?></td>
                             <td style="font-size:12px;color:#6b7280;"><?= esc($w['dept_live'] ?? '-') ?></td>
                             <td style="font-size:12px;color:#6b7280;"><?= esc($w['section_live'] ?? '-') ?></td>
                             <td style="font-size:12px;color:#6b7280;"><?= esc(date('d/m H:i', strtotime($w['waktu_undi']))) ?></td>
-                            <td style="text-align:center;">
-                                <button type="button" title="Batalkan pemenang" onclick="showModal({title:'Batalkan Pemenang?',message:'<?= esc($w['nama'], 'js') ?> akan dihapus dari daftar pemenang dan bisa diundi lagi.',confirmText:'Batalkan',type:'danger',onConfirm:()=>document.getElementById('fhw-<?= (int) $w['id'] ?>').submit()})" class="btn btn-danger btn-sm" style="height:26px;font-size:11px;padding:0 8px;"><i class="ti ti-x" style="font-size:12px;"></i></button>
-                                <form id="fhw-<?= (int) $w['id'] ?>" action="/doorprize/winner/<?= (int) $w['id'] ?>/hapus" method="post" style="display:none;"><?= csrf_field() ?></form>
+                            <td class="sel-aksi" style="text-align:center;white-space:nowrap;">
+                                <?php if (! $w['hangus']): ?><button type="button" class="btn btn-indigo btn-sm aksi-pemenang" data-aksi="hangus" data-id="<?= (int) $w['id'] ?>" data-nama="<?= esc($w['nama']) ?>" style="height:26px;font-size:11px;padding:0 8px;" title="Tidak hadir: unit diundi ulang, orang ini tidak ikut lagi">Hangus</button><?php endif; ?>
+                                <button type="button" class="btn btn-danger btn-sm aksi-pemenang" data-aksi="hapus" data-id="<?= (int) $w['id'] ?>" data-nama="<?= esc($w['nama']) ?>" style="height:26px;font-size:11px;padding:0 8px;" title="Salah undi: hapus pemenang, orang ini bisa diundi lagi"><i class="ti ti-x" style="font-size:12px;"></i></button>
                             </td>
                         </tr>
                         <?php endforeach; ?>
@@ -359,275 +371,6 @@
         </form>
     </div>
 </div>
-<script>
-function openEditBarang(item) {
-    document.getElementById('edit-nama-barang').value = item.nama_barang;
-    document.getElementById('edit-jumlah').value = item.jumlah;
-    document.getElementById('edit-kategori').value = item.kategori;
-    document.getElementById('form-edit-barang').action = '/doorprize/item/' + item.id + '/update';
-    document.getElementById('modal-edit-barang').style.display = 'flex';
-}
-
-// ═══ Eligible filter + pagination ═══
-var eligPerPage = 20;
-function filterElig() {
-    var q = (document.getElementById('elig-search').value || '').toLowerCase();
-    var dept = document.getElementById('elig-dept').value;
-    var sect = document.getElementById('elig-sect').value;
-    var shift = document.getElementById('elig-shift').value;
-    var rows = document.querySelectorAll('.elig-row');
-    var visible = [];
-    rows.forEach(function(tr) {
-        var txt = tr.textContent.toLowerCase();
-        var show = true;
-        if (q && txt.indexOf(q) === -1) show = false;
-        if (dept && tr.dataset.dept !== dept) show = false;
-        if (sect && tr.dataset.sect !== sect) show = false;
-        if (shift && tr.dataset.shift !== shift) show = false;
-        tr.style.display = show ? '' : 'none';
-        if (show) visible.push(tr);
-    });
-    // Re-number + paginate
-    eligPaginate(visible, 1);
-}
-function eligPaginate(visibleRows, page) {
-    var total = visibleRows.length;
-    var pages = Math.ceil(total / eligPerPage);
-    var start = (page - 1) * eligPerPage;
-    visibleRows.forEach(function(tr, i) {
-        tr.style.display = (i >= start && i < start + eligPerPage) ? '' : 'none';
-        tr.querySelector('.elig-no').textContent = i + 1;
-    });
-    var pager = document.getElementById('elig-pager');
-    if (pages <= 1) { pager.style.display = 'none'; return; }
-    pager.style.display = '';
-    var sN = 'display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:32px;padding:0 10px;border-radius:6px;font-size:13px;font-weight:500;text-decoration:none;border:1.5px solid;transition:all 0.2s cubic-bezier(0.34,1.56,0.64,1);cursor:pointer;background:transparent;color:#064687;border-color:#e5e7eb;';
-    var sA = 'display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:32px;padding:0 10px;border-radius:6px;font-size:13px;font-weight:700;text-decoration:none;border:1.5px solid;background:#0960A8;color:white;border-color:#0960A8;';
-    var sD = 'display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:32px;padding:0 10px;border-radius:6px;font-size:13px;font-weight:500;text-decoration:none;border:1.5px solid;background:transparent;color:#c4c4c4;border-color:#f0f0f0;cursor:not-allowed;';
-    var ho = ' onmouseover="this.style.background=\'#E8F4FD\';this.style.borderColor=\'#0960A8\';this.style.transform=\'translateY(-2px) scale(1.08)\'" onmouseout="this.style.background=\'transparent\';this.style.borderColor=\'#e5e7eb\';this.style.transform=\'\'"';
-    var h = '<div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;align-items:center;">';
-    // First + Prev
-    if (page > 1) {
-        h += '<a onclick="eligPaginate(getVisibleElig(),1)" style="' + sN + '"' + ho + '>«</a>';
-        h += '<a onclick="eligPaginate(getVisibleElig(),' + (page-1) + ')" style="' + sN + '"' + ho + '>‹ Prev</a>';
-    } else {
-        h += '<span style="' + sD + '">«</span><span style="' + sD + '">‹ Prev</span>';
-    }
-    // Page numbers (surround 2)
-    var startP = Math.max(1, page - 2), endP = Math.min(pages, page + 2);
-    for (var i = startP; i <= endP; i++) {
-        if (i === page) {
-            h += '<span style="' + sA + '">' + i + '</span>';
-        } else {
-            h += '<a onclick="eligPaginate(getVisibleElig(),' + i + ')" style="' + sN + '"' + ho + '>' + i + '</a>';
-        }
-    }
-    // Next + Last
-    if (page < pages) {
-        h += '<a onclick="eligPaginate(getVisibleElig(),' + (page+1) + ')" style="' + sN + '"' + ho + '>Next ›</a>';
-        h += '<a onclick="eligPaginate(getVisibleElig(),' + pages + ')" style="' + sN + '"' + ho + '>»</a>';
-    } else {
-        h += '<span style="' + sD + '">Next ›</span><span style="' + sD + '">»</span>';
-    }
-    h += '</div>';
-    pager.innerHTML = h;
-}
-function getVisibleElig() {
-    var q = (document.getElementById('elig-search').value || '').toLowerCase();
-    var dept = document.getElementById('elig-dept').value;
-    var sect = document.getElementById('elig-sect').value;
-    var shift = document.getElementById('elig-shift').value;
-    var rows = document.querySelectorAll('.elig-row');
-    var visible = [];
-    rows.forEach(function(tr) {
-        var txt = tr.textContent.toLowerCase();
-        var show = true;
-        if (q && txt.indexOf(q) === -1) show = false;
-        if (dept && tr.dataset.dept !== dept) show = false;
-        if (sect && tr.dataset.sect !== sect) show = false;
-        if (shift && tr.dataset.shift !== shift) show = false;
-        if (show) visible.push(tr);
-    });
-    return visible;
-}
-function resetEligFilter() {
-    document.getElementById('elig-search').value = '';
-    document.getElementById('elig-dept').value = '';
-    document.getElementById('elig-sect').value = '';
-    document.getElementById('elig-shift').value = '';
-    filterElig();
-}
-// Init: show all, paginate
-document.addEventListener('DOMContentLoaded', function() {
-    var allRows = document.querySelectorAll('.elig-row');
-    allRows.forEach(function(tr) { tr.dataset.visible = '1'; });
-    eligPaginate(Array.from(allRows), 1);
-});
-
-// ═══ Tab Switching ═══
-function switchTab(tab) {
-    ['barang','eligible','picker'].forEach(t => {
-        document.getElementById('sec-'+t).style.display = t===tab ? '' : 'none';
-        document.getElementById('tab-'+t).className = 'btn btn-sm ' + (t===tab ? 'btn-primary' : 'btn-ghost');
-        document.getElementById('tab-'+t).style.flex = '1';
-        document.getElementById('tab-'+t).style.borderRadius = '8px';
-    });
-    location.hash = tab;
-}
-// Restore tab dari URL hash
-var savedTab = location.hash.replace('#','');
-switchTab(['barang','eligible','picker'].indexOf(savedTab) > -1 ? savedTab : 'barang');
-
-// ═══ Sound Effects ═══
-function tadaSound(){
-    try{var ctx=new(window.AudioContext||window.webkitAudioContext)();
-    [523,659,784,1047].forEach(function(f,i){
-    var o=ctx.createOscillator(),g=ctx.createGain();
-    o.connect(g);g.connect(ctx.destination);o.type='sine';
-    o.frequency.setValueAtTime(f,ctx.currentTime+i*0.12);
-    g.gain.setValueAtTime(0,ctx.currentTime+i*0.12);
-    g.gain.linearRampToValueAtTime(0.3,ctx.currentTime+i*0.12+0.05);
-    g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+i*0.12+0.6);
-    o.start(ctx.currentTime+i*0.12);o.stop(ctx.currentTime+i*0.12+0.6);});}catch(e){}}
-
-// ═══ Random Picker ═══
-var hadiahDipilih = null;
-var isSpinning = false;
-
-function pilihHadiah(el) {
-    if (isSpinning) return;
-    document.querySelectorAll('.prize-item').forEach(function (b) { b.classList.toggle('is-active', b === el); });
-    hadiahDipilih = { id: el.dataset.id, nama: el.dataset.nama, img: el.dataset.img, kat: el.dataset.kat, sisa: parseInt(el.dataset.sisa, 10), jumlah: parseInt(el.dataset.jumlah, 10) };
-
-    var box = document.getElementById('stage-prize-img');
-    box.innerHTML = '<i class="ti ti-gift"></i>';
-    if (hadiahDipilih.img) {
-        var im = new Image();
-        im.alt = '';
-        im.onload = function () { box.innerHTML = ''; box.appendChild(im); };
-        im.src = '/' + hadiahDipilih.img;
-    }
-    document.getElementById('stage-prize-nama').textContent = hadiahDipilih.nama;
-    document.getElementById('stage-prize-meta').textContent =
-        'Kategori ' + hadiahDipilih.kat.charAt(0).toUpperCase() + hadiahDipilih.kat.slice(1) + ' · sisa ' + hadiahDipilih.sisa + ' dari ' + hadiahDipilih.jumlah + ' unit';
-
-    document.getElementById('winner-display').style.display = 'none';
-    document.getElementById('slot-reel').innerHTML = '<span class="slot-name slot-idle">?</span>';
-    var eligible = parseInt(document.getElementById('pstat-eligible').textContent, 10) || 0;
-    document.getElementById('btn-undi').disabled = eligible === 0;
-    document.getElementById('btn-undi-text').textContent = eligible === 0 ? 'Tidak ada peserta eligible' : 'Mulai Undi';
-    document.getElementById('slot-label').textContent = eligible + ' peserta eligible siap diundi';
-    // Di layar sempit panggung ada di bawah daftar hadiah — gulir ke sana
-    if (window.innerWidth <= 900) document.getElementById('picker-stage').scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function setLabel(teks, isError) {
-    var l = document.getElementById('slot-label');
-    l.textContent = teks;
-    l.style.color = isError ? '#FFB4B4' : '';
-}
-
-function mulaiUndi() {
-    if (!hadiahDipilih || isSpinning) return;
-    isSpinning = true;
-    document.getElementById('btn-undi').disabled = true;
-    document.getElementById('btn-undi-text').textContent = 'Mengundi...';
-    document.getElementById('winner-display').style.display = 'none';
-    setLabel('Mengundi ' + hadiahDipilih.nama + '...');
-
-    var fd = new FormData();
-    fd.append('id_item', hadiahDipilih.id);
-    fd.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
-
-    fetch('/doorprize/pick', { method: 'POST', body: fd })
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-            if (data.status !== 'success') { gagalUndi(data.message || 'Undian gagal.'); return; }
-            animasiSlot(data.pool || [], data.winner, data.barang, data.sisa);
-        })
-        .catch(function () { gagalUndi('Koneksi ke server gagal. Coba lagi.'); });
-}
-
-function gagalUndi(pesan) {
-    isSpinning = false;
-    setLabel(pesan, true);
-    document.getElementById('btn-undi').disabled = false;
-    document.getElementById('btn-undi-text').textContent = 'Coba Lagi';
-}
-
-function escHtml(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-
-function animasiSlot(pool, winner, barang, sisa) {
-    var reel = document.getElementById('slot-reel');
-    var names = pool.length ? pool.slice() : [winner.nama];
-    while (names.length < 24) names = names.concat(pool.length ? pool : [winner.nama]); // putaran minimal ±3 detik
-    names = names.slice(0, 30).concat([winner.nama]);
-    var step = 0, total = names.length;
-
-    (function tick() {
-        reel.innerHTML = '<span class="slot-name">' + escHtml(names[step]) + '</span>';
-        step++;
-        if (step < total) {
-            setTimeout(tick, 45 + Math.pow(step / total, 3) * 420); // makin lama makin pelan
-            return;
-        }
-        reel.innerHTML = '<span class="slot-name slot-win">' + escHtml(winner.nama) + '</span>';
-        document.getElementById('winner-eyebrow').textContent = 'Selamat! Pemenang ' + barang;
-        document.getElementById('winner-detail').textContent =
-            'NIP ' + winner.nip + (winner.departemen ? ' · ' + winner.departemen : '') + (winner.section ? ' · ' + winner.section : '');
-        document.getElementById('winner-display').style.display = '';
-        setLabel(sisa > 0 ? 'Sisa ' + sisa + ' unit ' + barang + ' lagi' : 'Semua unit ' + barang + ' sudah diundi');
-        tadaSound();
-        launchConfetti();
-        isSpinning = false;
-        document.getElementById('btn-undi-text').textContent = 'Memuat ulang...';
-        // Muat ulang supaya daftar sisa & riwayat pemenang ter-update (tab tetap di #picker).
-        // Di mode layar penuh jeda lebih lama agar nama pemenang sempat dibacakan.
-        setTimeout(function () { location.reload(); }, document.fullscreenElement ? 8000 : 4000);
-    })();
-}
-
-// ═══ Fullscreen panggung undian (untuk proyektor) ═══
-function toggleFullscreen() {
-    var el = document.getElementById('picker-stage');
-    if (!document.fullscreenElement) { el.requestFullscreen && el.requestFullscreen().catch(function () {}); }
-    else { document.exitFullscreen(); }
-}
-document.addEventListener('fullscreenchange', function () {
-    var ico = document.getElementById('ico-fullscreen');
-    if (ico) ico.className = 'ti ' + (document.fullscreenElement ? 'ti-minimize' : 'ti-maximize');
-});
-
-
-// ═══ Confetti ═══
-function launchConfetti(){
-    var canvas=document.createElement('canvas');
-    canvas.style.cssText='position:fixed;inset:0;z-index:99999;pointer-events:none;';
-    document.body.appendChild(canvas);
-    var ctx=canvas.getContext('2d');
-    canvas.width=window.innerWidth;canvas.height=window.innerHeight;
-    var pieces=[],colors=['#7FFFB4','#FFD97D','#009EE0','#F09595','#AFA9EC','#5DCAA5','#F0997B'];
-    for(var i=0;i<120;i++)pieces.push({x:canvas.width/2,y:canvas.height/2,vx:(Math.random()-0.5)*16,vy:Math.random()*-14-4,w:Math.random()*8+4,h:Math.random()*6+3,c:colors[i%colors.length],r:Math.random()*6.28,rv:(Math.random()-0.5)*0.3,g:0.25});
-    function draw(){ctx.clearRect(0,0,canvas.width,canvas.height);var alive=false;
-    pieces.forEach(function(p){p.x+=p.vx;p.vy+=p.g;p.y+=p.vy;p.r+=p.rv;p.vx*=0.99;
-    if(p.y<canvas.height+20){alive=true;ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.r);
-    ctx.fillStyle=p.c;ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h);ctx.restore();}});
-    if(alive)requestAnimationFrame(draw);else document.body.removeChild(canvas);}
-    requestAnimationFrame(draw);
-}
-
-// ESC tutup modal
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') document.getElementById('modal-tambah-barang').style.display = 'none';
-});
-
-// Pindah modal ke body
-document.addEventListener('DOMContentLoaded', function() {
-    var m = document.getElementById('modal-tambah-barang');
-    if (m) document.body.appendChild(m);
-    m = document.getElementById('modal-edit-barang');
-    if (m) document.body.appendChild(m);
-});
-</script>
+<script src="<?= aset('js/doorprize.js') ?>"></script>
 
 <?= $this->endSection() ?>
